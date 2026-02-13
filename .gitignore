@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Bun cache and build outputs
+.bun/
+*.tsbuildinfo
+
+dist/
+build/
+out/
+coverage/
+
+# Runtime logs and temp
+*.log
+logs/
+*.tmp
+*.temp
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# SQLite and local vault data
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/

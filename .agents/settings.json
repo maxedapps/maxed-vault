@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR/apps/web-app\" && bun run format",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

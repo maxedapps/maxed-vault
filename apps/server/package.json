@@ -1,0 +1,13 @@
+{
+  "name": "@maxed-vault/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "vitest run"
+  }
+}

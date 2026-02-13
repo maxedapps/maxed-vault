@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(tree:*)",
+      "WebFetch(domain:www.better-auth.com)",
+      "Skill(tanstack-start-router-head-metadata)",
+      "mcp__ide__getDiagnostics",
+      "WebFetch(domain:docs.dndkit.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(bun add:*)",
+      "Bash(bun --bun vite build:*)",
+      "WebFetch(domain:developer.chrome.com)",
+      "Bash(bun run build:*)",
+      "Bash(bunx tsc:*)",
+      "WebFetch(domain:tanstack.com)",
+      "Bash(bun run typecheck:*)",
+      "Bash(bun run tsc:*)",
+      "WebFetch(domain:ai-sdk.dev)",
+      "WebFetch(domain:sdk.vercel.ai)",
+      "WebFetch(domain:zod.dev)",
+      "WebFetch(domain:platform.openai.com)",
+      "Bash(npx tsc:*)",
+      "Bash(xargs ls:*)",
+      "Bash(xargs basename:*)",
+      "Bash(bun run:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(grep:*)",
+      "WebFetch(domain:joshua.hu)",
+      "WebFetch(domain:web.dev)",
+      "WebFetch(domain:www.feroot.com)",
+      "WebFetch(domain:vinxi.vercel.app)",
+      "WebFetch(domain:v1.h3.dev)",
+      "WebFetch(domain:api.reactrouter.com)"
+    ]
+  }
+}
