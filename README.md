@@ -1,4 +1,4 @@
-# BunVault Monorepo
+# MaxedVault Monorepo
 
 Bun-native monorepo scaffold for a secrets vault system.
 Current state includes a working server API and CLI client.
@@ -28,15 +28,15 @@ Current state includes a working server API and CLI client.
   - `GET /projects/:project/secrets-env`
   - SQLite persistence with encrypted secret values (AES-GCM)
 - Client (`apps/client`)
-  - `bunvault init --server <url>`
-  - `bunvault project create <slug>`
-  - `bunvault project ls`
-  - `bunvault get <name> --project <slug>`
-  - `bunvault set <name> --project <slug>`
-  - `bunvault ls [prefix] --project <slug>`
-  - `bunvault rm <name> --project <slug>`
-  - `bunvault env --project <slug>`
-  - `bunvault status`
+  - `maxedvault init --server <url>`
+  - `maxedvault project create <slug>`
+  - `maxedvault project ls`
+  - `maxedvault get <name> --project <slug>`
+  - `maxedvault set <name> --project <slug>`
+  - `maxedvault ls [prefix] --project <slug>`
+  - `maxedvault rm <name> --project <slug>`
+  - `maxedvault env --project <slug>`
+  - `maxedvault status`
 
 ## Quick Start
 
@@ -75,9 +75,11 @@ eval "$(bun run src/index.ts env --project infographics)"
 bun run src/index.ts status
 ```
 
-## Build Standalone CLI Binary
+## Build Standalone Binaries
 
-You can compile the client into a single executable with Bun:
+You can compile client and server into single executables with Bun.
+
+### Client
 
 ```bash
 cd apps/client
@@ -93,9 +95,25 @@ bun run build:bin:linux-x64
 bun run build:bin:darwin-arm64
 ```
 
-This produces binaries in `apps/client/dist`.
+### Server
 
-Security note: compiled binaries still read runtime configuration (for this project, your local `~/.bunvault/config.json` and current environment). Do not inline secrets at build time.
+```bash
+cd apps/server
+
+# local platform binary
+bun run build:bin
+
+# production-oriented build (minify + sourcemap + bytecode)
+bun run build:bin:prod
+
+# cross-compile examples
+bun run build:bin:linux-x64
+bun run build:bin:darwin-arm64
+```
+
+This produces binaries in each package `dist` directory.
+
+Security note: compiled binaries still read runtime configuration (for this project, your local `~/.maxedvault/config.json` and current environment). Do not inline secrets at build time.
 
 ## Testing
 

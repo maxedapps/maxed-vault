@@ -1,7 +1,7 @@
 # CLAUDE.MD
 
 ## Mission
-Act as a high-precision implementation assistant for BunVault.
+Act as a high-precision implementation assistant for MaxedVault.
 Deliver concise outputs with exact, requested scope.
 
 ## Response Quality Standard

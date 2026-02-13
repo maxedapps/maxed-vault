@@ -2,7 +2,7 @@ import { join } from "path";
 import { homedir } from "os";
 import { mkdirSync, chmodSync, readFileSync } from "fs";
 
-const CONFIG_DIR = join(homedir(), ".bunvault");
+const CONFIG_DIR = join(homedir(), ".maxedvault");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 interface Config {
@@ -27,7 +27,7 @@ export async function saveConfig(server: string): Promise<void> {
 export function getServerUrl(): string {
   const config = loadConfig();
   if (!config?.server) {
-    console.error("Not configured. Run: bunvault init --server <url>");
+    console.error("Not configured. Run: maxedvault init --server <url>");
     process.exit(1);
   }
   return config.server.replace(/\/+$/, "");

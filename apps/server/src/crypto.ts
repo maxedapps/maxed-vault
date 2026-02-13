@@ -1,5 +1,5 @@
 const PBKDF2_ITERATIONS = 600_000;
-const SALT = new TextEncoder().encode("bunvault-domain-separation-salt");
+const SALT = new TextEncoder().encode("maxedvault-domain-separation-salt");
 
 export async function deriveMasterKey(passphrase: string): Promise<CryptoKey> {
   const keyMaterial = await crypto.subtle.importKey(
