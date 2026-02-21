@@ -8,9 +8,56 @@ import { cmdStatus } from "./commands/status";
 import { cmdProjectCreate, cmdProjectLs } from "./commands/project.ts";
 import { cmdEnv } from "./commands/env.ts";
 import { cmdRun } from "./commands/run.ts";
-const rawArgs = Bun.argv.slice(2);
 
-function parseRunInput(args: string[]): { project: string; command: string[] } | null {
+export interface CliDeps {
+  argv: string[];
+  parseArgs: typeof parseArgs;
+  saveConfig: typeof saveConfig;
+  cmdGet: typeof cmdGet;
+  cmdSet: typeof cmdSet;
+  cmdLs: typeof cmdLs;
+  cmdRm: typeof cmdRm;
+  cmdStatus: typeof cmdStatus;
+  cmdProjectCreate: typeof cmdProjectCreate;
+  cmdProjectLs: typeof cmdProjectLs;
+  cmdEnv: typeof cmdEnv;
+  cmdRun: typeof cmdRun;
+  error: (...args: unknown[]) => void;
+  exit: (code: number) => never;
+}
+
+function buildCliDeps(overrides: Partial<CliDeps> = {}): CliDeps {
+  const argv =
+    typeof Bun !== "undefined" && Array.isArray(Bun.argv) ? Bun.argv.slice(2) : process.argv.slice(2);
+
+  return {
+    argv,
+    parseArgs,
+    saveConfig,
+    cmdGet,
+    cmdSet,
+    cmdLs,
+    cmdRm,
+    cmdStatus,
+    cmdProjectCreate,
+    cmdProjectLs,
+    cmdEnv,
+    cmdRun,
+    error: console.error,
+    exit: (code: number): never => process.exit(code),
+    ...overrides,
+  };
+}
+
+function fail(message: string, deps: CliDeps): never {
+  deps.error(message);
+  return deps.exit(1);
+}
+
+export function parseRunInput(
+  args: string[],
+  parseArgsImpl: typeof parseArgs = parseArgs,
+): { project: string; command: string[] } | null {
   const separatorIndex = args.indexOf("--");
   if (separatorIndex === -1) {
     return null;
@@ -23,7 +70,7 @@ function parseRunInput(args: string[]): { project: string; command: string[] } |
   }
 
   try {
-    const { values, positionals } = parseArgs({
+    const { values, positionals } = parseArgsImpl({
       args: optionArgs,
       allowPositionals: true,
       options: {
@@ -41,21 +88,21 @@ function parseRunInput(args: string[]): { project: string; command: string[] } |
   }
 }
 
-async function main(): Promise<void> {
+export async function runCli(rawArgs: string[], overrides: Partial<CliDeps> = {}): Promise<void> {
+  const deps = buildCliDeps({ ...overrides, argv: rawArgs });
   const [rawCommand, ...rawRest] = rawArgs;
 
   if (rawCommand === "run") {
-    const parsed = parseRunInput(rawRest);
+    const parsed = parseRunInput(rawRest, deps.parseArgs);
     if (!parsed) {
-      console.error("Usage: maxedvault run --project <slug> -- <command> [args...]");
-      process.exit(1);
+      fail("Usage: maxedvault run --project <slug> -- <command> [args...]", deps);
     }
 
-    await cmdRun(parsed.project, parsed.command);
+    await deps.cmdRun(parsed.project, parsed.command);
     return;
   }
 
-  const { positionals, values } = parseArgs({
+  const { positionals, values } = deps.parseArgs({
     args: rawArgs,
     allowPositionals: true,
     options: {
@@ -69,86 +116,91 @@ async function main(): Promise<void> {
   switch (command) {
     case "init": {
       if (!values.server) {
-        console.error("Usage: maxedvault init --server <url>");
-        process.exit(1);
+        fail("Usage: maxedvault init --server <url>", deps);
       }
-      await saveConfig(values.server);
-      console.error(`Configured server: ${values.server}`);
+      await deps.saveConfig(values.server);
+      deps.error(`Configured server: ${values.server}`);
       break;
     }
     case "get": {
       if (!rest[0] || !values.project) {
-        console.error("Usage: maxedvault get <name> --project <slug>");
-        process.exit(1);
+        fail("Usage: maxedvault get <name> --project <slug>", deps);
       }
-      await cmdGet(values.project, rest[0]);
+      await deps.cmdGet(values.project, rest[0]);
       break;
     }
     case "set": {
       if (!rest[0] || !values.project) {
-        console.error("Usage: maxedvault set <name> --project <slug>");
-        process.exit(1);
+        fail("Usage: maxedvault set <name> --project <slug>", deps);
       }
-      await cmdSet(values.project, rest[0]);
+      await deps.cmdSet(values.project, rest[0]);
       break;
     }
     case "ls": {
       if (!values.project) {
-        console.error("Usage: maxedvault ls [prefix] --project <slug>");
-        process.exit(1);
+        fail("Usage: maxedvault ls [prefix] --project <slug>", deps);
       }
-      await cmdLs(values.project, rest[0]);
+      await deps.cmdLs(values.project, rest[0]);
       break;
     }
     case "rm": {
       if (!rest[0] || !values.project) {
-        console.error("Usage: maxedvault rm <name> --project <slug>");
-        process.exit(1);
+        fail("Usage: maxedvault rm <name> --project <slug>", deps);
       }
-      await cmdRm(values.project, rest[0]);
+      await deps.cmdRm(values.project, rest[0]);
       break;
     }
     case "status": {
-      await cmdStatus();
+      await deps.cmdStatus();
       break;
     }
     case "project": {
       switch (rest[0]) {
         case "create": {
           if (!rest[1]) {
-            console.error("Usage: maxedvault project create <slug>");
-            process.exit(1);
+            fail("Usage: maxedvault project create <slug>", deps);
           }
-          await cmdProjectCreate(rest[1]);
+          await deps.cmdProjectCreate(rest[1]);
           break;
         }
         case "ls": {
-          await cmdProjectLs();
+          await deps.cmdProjectLs();
           break;
         }
         default: {
-          console.error("Usage: maxedvault project <create|ls>");
-          process.exit(1);
+          fail("Usage: maxedvault project <create|ls>", deps);
         }
       }
       break;
     }
     case "env": {
       if (!values.project) {
-        console.error("Usage: maxedvault env --project <slug>");
-        process.exit(1);
+        fail("Usage: maxedvault env --project <slug>", deps);
       }
-      await cmdEnv(values.project);
+      await deps.cmdEnv(values.project);
       break;
     }
     default: {
-      console.error("Usage: maxedvault <init|get|set|ls|rm|status|project|env|run>");
-      process.exit(1);
+      fail("Usage: maxedvault <init|get|set|ls|rm|status|project|env|run>", deps);
     }
   }
 }
 
-main().catch((err) => {
-  console.error("Unhandled error:", err);
-  process.exit(1);
-});
+export async function main(overrides: Partial<CliDeps> = {}): Promise<void> {
+  const deps = buildCliDeps(overrides);
+  await runCli(deps.argv, deps);
+}
+
+export async function runCliEntrypoint(overrides: Partial<CliDeps> = {}): Promise<void> {
+  const deps = buildCliDeps(overrides);
+  try {
+    await runCli(deps.argv, deps);
+  } catch (err) {
+    deps.error("Unhandled error:", err);
+    deps.exit(1);
+  }
+}
+
+if (import.meta.main) {
+  void runCliEntrypoint();
+}
