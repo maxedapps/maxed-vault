@@ -1,7 +1,7 @@
 # AGENTS.MD
 
 ## Purpose
-This repository contains the BunVault monorepo for a secrets vault system.
+This repository contains the MaxedVault monorepo for a secrets vault system.
 Scope currently is project initialization and incremental implementation.
 
 ## Global Working Rules
