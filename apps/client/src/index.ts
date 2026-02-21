@@ -7,17 +7,63 @@ import { cmdRm } from "./commands/rm";
 import { cmdStatus } from "./commands/status";
 import { cmdProjectCreate, cmdProjectLs } from "./commands/project.ts";
 import { cmdEnv } from "./commands/env.ts";
+import { cmdRun } from "./commands/run.ts";
+const rawArgs = Bun.argv.slice(2);
 
-const { positionals, values } = parseArgs({
-  args: Bun.argv.slice(2),
-  allowPositionals: true,
-  options: {
-    server: { type: "string" },
-    project: { type: "string" },
-  },
-});
+function parseRunInput(args: string[]): { project: string; command: string[] } | null {
+  const separatorIndex = args.indexOf("--");
+  if (separatorIndex === -1) {
+    return null;
+  }
+
+  const optionArgs = args.slice(0, separatorIndex);
+  const commandArgs = args.slice(separatorIndex + 1);
+  if (commandArgs.length === 0) {
+    return null;
+  }
+
+  try {
+    const { values, positionals } = parseArgs({
+      args: optionArgs,
+      allowPositionals: true,
+      options: {
+        project: { type: "string" },
+      },
+    });
+
+    if (!values.project || positionals.length > 0) {
+      return null;
+    }
+
+    return { project: values.project, command: commandArgs };
+  } catch {
+    return null;
+  }
+}
 
 async function main(): Promise<void> {
+  const [rawCommand, ...rawRest] = rawArgs;
+
+  if (rawCommand === "run") {
+    const parsed = parseRunInput(rawRest);
+    if (!parsed) {
+      console.error("Usage: maxedvault run --project <slug> -- <command> [args...]");
+      process.exit(1);
+    }
+
+    await cmdRun(parsed.project, parsed.command);
+    return;
+  }
+
+  const { positionals, values } = parseArgs({
+    args: rawArgs,
+    allowPositionals: true,
+    options: {
+      server: { type: "string" },
+      project: { type: "string" },
+    },
+  });
+
   const [command, ...rest] = positionals;
 
   switch (command) {
@@ -96,7 +142,7 @@ async function main(): Promise<void> {
       break;
     }
     default: {
-      console.error("Usage: maxedvault <init|get|set|ls|rm|status|project|env>");
+      console.error("Usage: maxedvault <init|get|set|ls|rm|status|project|env|run>");
       process.exit(1);
     }
   }

@@ -28,6 +28,21 @@ describe("router", () => {
     });
   });
 
+  it("returns 400 for invalid secret name on set", async () => {
+    const req = new Request("http://vault.local/projects/infographics/secrets/bad-key", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: "secret" }),
+    });
+    const res = await router(req, {} as never);
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error:
+        "Invalid secret name. Use environment-variable-safe format: letters/underscores, then letters/digits/underscores",
+    });
+  });
+
   it("returns 404 for unknown routes", async () => {
     const req = new Request("http://vault.local/unknown", { method: "GET" });
     const res = await router(req, {} as never);

@@ -54,4 +54,28 @@ describe("cmdEnv", () => {
     expect(console.error).toHaveBeenCalledWith("Project not found");
     expect(process.exit).toHaveBeenCalledWith(1);
   });
+
+  it("fails on invalid environment variable names", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            project: "infographics",
+            secrets: [{ name: "bad-key", value: "abc123" }],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    process.exit = vi.fn() as never;
+
+    await cmdEnv("infographics");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Invalid secret names for environment variables: bad-key",
+    );
+    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(process.stdout.write).not.toHaveBeenCalled();
+  });
 });

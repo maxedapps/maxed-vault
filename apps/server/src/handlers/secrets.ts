@@ -2,6 +2,8 @@ import { json } from "../response";
 import { encryptSecret, decryptSecret } from "../crypto";
 import type { Context } from "../types";
 
+const SECRET_ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 function getProjectId(project: string, ctx: Context): number | null {
   const row = ctx.db.query("SELECT id FROM projects WHERE name = ?1").get(project) as
     | { id: number }
@@ -71,6 +73,16 @@ export async function handleSetSecret(
   name: string,
   ctx: Context,
 ): Promise<Response> {
+  if (!SECRET_ENV_NAME_RE.test(name)) {
+    return json(
+      {
+        error:
+          "Invalid secret name. Use environment-variable-safe format: letters/underscores, then letters/digits/underscores",
+      },
+      400,
+    );
+  }
+
   const projectId = getProjectId(project, ctx);
   if (!projectId) {
     return json({ error: "Project not found" }, 404);

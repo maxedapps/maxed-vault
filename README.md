@@ -36,6 +36,7 @@ Current state includes a working server API and CLI client.
   - `maxedvault ls [prefix] --project <slug>`
   - `maxedvault rm <name> --project <slug>`
   - `maxedvault env --project <slug>`
+  - `maxedvault run --project <slug> -- <command> [args...]`
   - `maxedvault status`
 
 ## Quick Start
@@ -72,8 +73,12 @@ bun run src/index.ts get WEBHOOK_SECRET --project infographics
 bun run src/index.ts env --project infographics
 # load in current shell session
 eval "$(bun run src/index.ts env --project infographics)"
+# run a command with project secrets injected into the child process env
+bun run src/index.ts run --project infographics -- npm start
 bun run src/index.ts status
 ```
+
+Secret naming rule: keys must be environment-variable-safe (`^[A-Za-z_][A-Za-z0-9_]*$`).
 
 ## Build Standalone Binaries
 
