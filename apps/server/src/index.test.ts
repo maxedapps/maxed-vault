@@ -31,6 +31,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
   const deriveMasterKeyMock = vi.fn().mockResolvedValue({} as CryptoKey);
   const initDatabaseMock = vi.fn().mockReturnValue({ close: vi.fn() });
   const routerMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+  const promptPassphraseMock = vi.fn().mockReturnValue("test-passphrase");
   const serveMock = vi.fn();
   const logMock = vi.fn();
   const errorMock = vi.fn();
@@ -39,10 +40,12 @@ function createDeps(overrides: Record<string, unknown> = {}) {
   });
 
   return {
-    env: { VAULT_PASSPHRASE: "test-passphrase" },
+    env: {},
+    argv: [],
     deriveMasterKey: deriveMasterKeyMock,
     initDatabase: initDatabaseMock,
     router: routerMock,
+    promptPassphrase: promptPassphraseMock,
     serve: serveMock,
     log: logMock,
     error: errorMock,
@@ -50,6 +53,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     deriveMasterKeyMock,
     initDatabaseMock,
     routerMock,
+    promptPassphraseMock,
     serveMock,
     logMock,
     errorMock,
@@ -63,32 +67,31 @@ beforeEach(() => {
 });
 
 describe("startServer", () => {
-  it("fails fast when passphrase is missing", async () => {
+  it("fails fast when prompted passphrase is missing", async () => {
     const { startServer } = await import("./index");
-    const deps = createDeps({ env: {} });
+    const deps = createDeps({ promptPassphrase: vi.fn().mockReturnValue("") });
 
     await expect(startServer(deps)).rejects.toThrowError(ExitError);
-    expect(deps.errorMock).toHaveBeenCalledWith(
-      "Fatal: VAULT_PASSPHRASE environment variable is required",
-    );
+    expect(deps.errorMock).toHaveBeenCalledWith("Fatal: passphrase is required");
     expect(deps.exitMock).toHaveBeenCalledWith(1);
     expect(deps.serveMock).not.toHaveBeenCalled();
   });
 
-  it("starts with default port and db path and wires router to serve fetch", async () => {
+  it("prompts for passphrase, then starts with default port/db and wires router fetch", async () => {
     const { startServer } = await import("./index");
     const key = {} as CryptoKey;
     const db = { close: vi.fn() };
     const deps = createDeps({
       deriveMasterKey: vi.fn().mockResolvedValue(key),
       initDatabase: vi.fn().mockReturnValue(db),
-      env: { VAULT_PASSPHRASE: "test-passphrase" },
+      promptPassphrase: vi.fn().mockReturnValue("prompted-passphrase"),
     });
 
     const startCtx = await startServer(deps);
     const [serveArgs] = deps.serveMock.mock.calls[0] as [{ port: number; fetch: (req: Request) => Promise<Response> }];
 
-    expect(deps.deriveMasterKey).toHaveBeenCalledWith("test-passphrase");
+    expect(deps.promptPassphrase).toHaveBeenCalledWith("Vault passphrase: ");
+    expect(deps.deriveMasterKey).toHaveBeenCalledWith("prompted-passphrase");
     expect(deps.initDatabase).toHaveBeenCalledWith("vault.db");
     expect(serveArgs.port).toBe(8420);
     expect(startCtx).toEqual({ db, masterKey: key });
@@ -106,14 +109,68 @@ describe("startServer", () => {
     expect(calledCtx).toEqual({ db, masterKey: key });
   });
 
+  it("uses --passphrase value and skips prompt", async () => {
+    const { startServer } = await import("./index");
+    const promptPassphrase = vi.fn();
+    const deps = createDeps({
+      argv: ["--passphrase", "flag-passphrase"],
+      promptPassphrase,
+    });
+
+    await startServer(deps);
+
+    expect(promptPassphrase).not.toHaveBeenCalled();
+    expect(deps.deriveMasterKey).toHaveBeenCalledWith("flag-passphrase");
+  });
+
+  it("uses --passphrase=<value> form", async () => {
+    const { startServer } = await import("./index");
+    const promptPassphrase = vi.fn();
+    const deps = createDeps({
+      argv: ["--passphrase=inline-passphrase"],
+      promptPassphrase,
+    });
+
+    await startServer(deps);
+
+    expect(promptPassphrase).not.toHaveBeenCalled();
+    expect(deps.deriveMasterKey).toHaveBeenCalledWith("inline-passphrase");
+  });
+
+  it("fails fast when --passphrase has no value", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase"],
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith("Fatal: --passphrase flag requires a value");
+    expect(deps.exitMock).toHaveBeenCalledWith(1);
+    expect(deps.promptPassphraseMock).not.toHaveBeenCalled();
+    expect(deps.serveMock).not.toHaveBeenCalled();
+  });
+
+  it("fails fast when --passphrase is empty", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase="],
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith("Fatal: --passphrase cannot be empty");
+    expect(deps.exitMock).toHaveBeenCalledWith(1);
+    expect(deps.promptPassphraseMock).not.toHaveBeenCalled();
+    expect(deps.serveMock).not.toHaveBeenCalled();
+  });
+
   it("uses custom port and db path from env", async () => {
     const { startServer } = await import("./index");
     const deps = createDeps({
       env: {
-        VAULT_PASSPHRASE: "test-passphrase",
         VAULT_PORT: "9999",
         VAULT_DB_PATH: "/tmp/custom-vault.db",
       },
+      argv: ["--passphrase", "test-passphrase"],
     });
 
     await startServer(deps);

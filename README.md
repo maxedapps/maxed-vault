@@ -58,8 +58,11 @@ bun run check
 ```bash
 cd apps/server
 cp .env.example .env
-# update VAULT_PASSPHRASE and optional values
+# update optional values (port/db path), then start:
 bun run start
+# you'll be prompted for the vault passphrase at startup
+# passphrase can also be provided non-interactively:
+bun run start -- --passphrase "change-me-to-a-strong-passphrase"
 ```
 
 ### Client
