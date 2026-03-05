@@ -65,6 +65,12 @@ bun run start
 bun run start -- --passphrase "change-me-to-a-strong-passphrase"
 ```
 
+Server DB default location (when `VAULT_DB_PATH` is not set):
+- macOS: `~/Library/Application Support/maxedvault/vault.db`
+- Linux: `$XDG_DATA_HOME/maxedvault/vault.db` (or `~/.local/share/maxedvault/vault.db` if `XDG_DATA_HOME` is unset)
+
+Set `VAULT_DB_PATH` in `apps/server/.env` to override this.
+
 ### Client
 
 ```bash

@@ -1,3 +1,6 @@
+import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { deriveMasterKey } from "./crypto";
 import { initDatabase } from "./db";
 import { router } from "./router";
@@ -8,6 +11,9 @@ type PromptPassphrase = (message: string) => string | null;
 export interface ServerDeps {
   env: NodeJS.ProcessEnv;
   argv: string[];
+  platform: NodeJS.Platform;
+  homedir: () => string;
+  mkdirSync: typeof mkdirSync;
   deriveMasterKey: typeof deriveMasterKey;
   initDatabase: typeof initDatabase;
   router: typeof router;
@@ -22,6 +28,9 @@ function buildServerDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
   return {
     env: process.env,
     argv: process.argv.slice(2),
+    platform: process.platform,
+    homedir,
+    mkdirSync,
     deriveMasterKey,
     initDatabase,
     router,
@@ -93,12 +102,31 @@ function parsePort(raw: string | undefined): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 8420;
 }
 
+function resolveDefaultDbPath(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  home: string,
+): string {
+  if (platform === "darwin") {
+    return join(home, "Library", "Application Support", "maxedvault", "vault.db");
+  }
+
+  const xdgDataHome = env.XDG_DATA_HOME;
+  const dataHome =
+    typeof xdgDataHome === "string" && xdgDataHome.trim().length > 0
+      ? xdgDataHome
+      : join(home, ".local", "share");
+
+  return join(dataHome, "maxedvault", "vault.db");
+}
+
 export async function startServer(overrides: Partial<ServerDeps> = {}): Promise<Context> {
   const deps = buildServerDeps(overrides);
   const passphrase = resolvePassphrase(deps);
 
   const port = parsePort(deps.env.VAULT_PORT);
-  const dbPath = deps.env.VAULT_DB_PATH ?? "vault.db";
+  const dbPath = deps.env.VAULT_DB_PATH ?? resolveDefaultDbPath(deps.env, deps.platform, deps.homedir());
+  deps.mkdirSync(dirname(dbPath), { recursive: true });
 
   const masterKey = await deps.deriveMasterKey(passphrase);
   const db = deps.initDatabase(dbPath);

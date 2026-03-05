@@ -1,9 +1,23 @@
 import { vaultFetch } from "../api";
 
+function isInteractiveStdin(): boolean {
+  const stdin = Bun.stdin as { isTTY?: boolean | (() => boolean) };
+
+  if (typeof stdin.isTTY === "function") {
+    return stdin.isTTY();
+  }
+
+  if (typeof stdin.isTTY === "boolean") {
+    return stdin.isTTY;
+  }
+
+  return Boolean(process.stdin.isTTY);
+}
+
 export async function cmdSet(project: string, name: string): Promise<void> {
   let value: string;
 
-  if (Bun.stdin.isTTY()) {
+  if (isInteractiveStdin()) {
     process.stderr.write("Enter secret value: ");
     const reader = Bun.stdin.stream().getReader();
     const { value: chunk } = await reader.read();
@@ -21,9 +35,9 @@ export async function cmdSet(project: string, name: string): Promise<void> {
   const res = await vaultFetch(
     `/projects/${encodeURIComponent(project)}/secrets/${encodeURIComponent(name)}`,
     {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ value }),
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value }),
     },
   );
 

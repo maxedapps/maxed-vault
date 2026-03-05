@@ -32,6 +32,8 @@ function createDeps(overrides: Record<string, unknown> = {}) {
   const initDatabaseMock = vi.fn().mockReturnValue({ close: vi.fn() });
   const routerMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true })));
   const promptPassphraseMock = vi.fn().mockReturnValue("test-passphrase");
+  const homedirMock = vi.fn().mockReturnValue("/home/tester");
+  const mkdirSyncMock = vi.fn();
   const serveMock = vi.fn();
   const logMock = vi.fn();
   const errorMock = vi.fn();
@@ -42,6 +44,9 @@ function createDeps(overrides: Record<string, unknown> = {}) {
   return {
     env: {},
     argv: [],
+    platform: "linux",
+    homedir: homedirMock,
+    mkdirSync: mkdirSyncMock,
     deriveMasterKey: deriveMasterKeyMock,
     initDatabase: initDatabaseMock,
     router: routerMock,
@@ -54,6 +59,8 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     initDatabaseMock,
     routerMock,
     promptPassphraseMock,
+    homedirMock,
+    mkdirSyncMock,
     serveMock,
     logMock,
     errorMock,
@@ -92,7 +99,10 @@ describe("startServer", () => {
 
     expect(deps.promptPassphrase).toHaveBeenCalledWith("Vault passphrase: ");
     expect(deps.deriveMasterKey).toHaveBeenCalledWith("prompted-passphrase");
-    expect(deps.initDatabase).toHaveBeenCalledWith("vault.db");
+    expect(deps.initDatabase).toHaveBeenCalledWith("/home/tester/.local/share/maxedvault/vault.db");
+    expect(deps.mkdirSyncMock).toHaveBeenCalledWith("/home/tester/.local/share/maxedvault", {
+      recursive: true,
+    });
     expect(serveArgs.port).toBe(8420);
     expect(startCtx).toEqual({ db, masterKey: key });
     expect(deps.logMock).toHaveBeenCalledWith("MaxedVault listening on http://localhost:8420");
@@ -178,7 +188,42 @@ describe("startServer", () => {
     const [serveArgs] = deps.serveMock.mock.calls[0] as [{ port: number }];
     expect(serveArgs.port).toBe(9999);
     expect(deps.initDatabase).toHaveBeenCalledWith("/tmp/custom-vault.db");
+    expect(deps.mkdirSyncMock).toHaveBeenCalledWith("/tmp", { recursive: true });
     expect(deps.logMock).toHaveBeenCalledWith("MaxedVault listening on http://localhost:9999");
+  });
+
+  it("uses macOS Application Support default path when platform is darwin", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      platform: "darwin",
+      homedir: vi.fn().mockReturnValue("/Users/tester"),
+    });
+
+    await startServer(deps);
+
+    expect(deps.initDatabase).toHaveBeenCalledWith(
+      "/Users/tester/Library/Application Support/maxedvault/vault.db",
+    );
+    expect(deps.mkdirSyncMock).toHaveBeenCalledWith(
+      "/Users/tester/Library/Application Support/maxedvault",
+      { recursive: true },
+    );
+  });
+
+  it("uses XDG_DATA_HOME on linux when available", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      env: {
+        XDG_DATA_HOME: "/var/lib/user-data",
+      },
+    });
+
+    await startServer(deps);
+
+    expect(deps.initDatabase).toHaveBeenCalledWith("/var/lib/user-data/maxedvault/vault.db");
+    expect(deps.mkdirSyncMock).toHaveBeenCalledWith("/var/lib/user-data/maxedvault", {
+      recursive: true,
+    });
   });
 });
 

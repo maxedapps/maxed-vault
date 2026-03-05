@@ -16,14 +16,14 @@ vi.mock("../api", () => ({
   vaultFetch: vaultFetchMock,
 }));
 
-function createTtyBunInput(input: string) {
+function createTtyBunInput(input: string, isTTY: (() => boolean) | boolean = () => true) {
   const releaseLock = vi.fn();
   const read = vi.fn().mockResolvedValue({ value: new TextEncoder().encode(input) });
   const getReader = vi.fn().mockReturnValue({ read, releaseLock });
 
   return {
     stdin: {
-      isTTY: () => true,
+      isTTY,
       stream: () => ({ getReader }),
     },
   };
@@ -63,6 +63,21 @@ describe("cmdSet", () => {
 
   it("uses a reader prompt when stdin is a TTY", async () => {
     vi.stubGlobal("Bun", createTtyBunInput("typed-secret\n"));
+    vaultFetchMock.mockResolvedValue(new Response(JSON.stringify({ created: false }), { status: 200 }));
+
+    await cmdSet("infographics", "WEBHOOK_SECRET");
+
+    expect(process.stderr.write).toHaveBeenCalledWith("Enter secret value: ");
+    expect(vaultFetchMock).toHaveBeenCalledWith("/projects/infographics/secrets/WEBHOOK_SECRET", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: "typed-secret" }),
+    });
+    expect(console.error).toHaveBeenCalledWith("Updated infographics/WEBHOOK_SECRET");
+  });
+
+  it("supports Bun stdin isTTY as a boolean", async () => {
+    vi.stubGlobal("Bun", createTtyBunInput("typed-secret\n", true));
     vaultFetchMock.mockResolvedValue(new Response(JSON.stringify({ created: false }), { status: 200 }));
 
     await cmdSet("infographics", "WEBHOOK_SECRET");
