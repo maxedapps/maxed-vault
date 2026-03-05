@@ -91,7 +91,7 @@ describe("config", () => {
     const { getServerUrl } = await import("./config");
 
     expect(() => getServerUrl()).toThrowError(ExitError);
-    expect(console.error).toHaveBeenCalledWith("Not configured. Run: maxedvault init --server <url>");
+    expect(console.error).toHaveBeenCalledWith("Not configured. Run: maxedvault init");
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 });

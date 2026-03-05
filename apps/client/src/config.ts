@@ -27,7 +27,7 @@ export async function saveConfig(server: string): Promise<void> {
 export function getServerUrl(): string {
   const config = loadConfig();
   if (!config?.server) {
-    console.error("Not configured. Run: maxedvault init --server <url>");
+    console.error("Not configured. Run: maxedvault init");
     process.exit(1);
   }
   return config.server.replace(/\/+$/, "");

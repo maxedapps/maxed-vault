@@ -30,4 +30,5 @@ Deliver concise outputs with exact, requested scope.
 ## Repo Layout
 - `apps/server`: Bun server package.
 - `apps/client`: Bun client/CLI package.
+- `apps/app`: unified single-binary package (routes to server/client entrypoints).
 - Root: workspace config, policy docs, shared guidance.

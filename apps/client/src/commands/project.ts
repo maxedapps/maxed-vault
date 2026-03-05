@@ -14,7 +14,7 @@ export async function cmdProjectCreate(name: string): Promise<void> {
     return;
   }
 
-  console.error(`Created project ${data.name}`);
+  console.log(`Created project ${data.name}`);
 }
 
 export async function cmdProjectLs(): Promise<void> {

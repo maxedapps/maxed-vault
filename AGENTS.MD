@@ -10,6 +10,7 @@ Scope currently is project initialization and incremental implementation.
 - Do not add unrelated features, files, or refactors.
 - Prefer minimal changes with clear intent.
 - Ask for clarification only when a blocking ambiguity exists.
+- Keep README.md file updated to accurately describe the app and its features / commands / flags
 
 ## Runtime and Tooling Rules (Bun First)
 - Use Bun as the default runtime, package manager, and task runner.
@@ -30,4 +31,5 @@ Scope currently is project initialization and incremental implementation.
 ## Monorepo Boundaries
 - `apps/server` is backend/server runtime scope.
 - `apps/client` is CLI/client scope.
+- `apps/app` is the unified single-binary entrypoint/orchestration scope.
 - Shared conventions should be documented at the root before duplication.

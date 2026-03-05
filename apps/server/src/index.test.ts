@@ -34,6 +34,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
   const promptPassphraseMock = vi.fn().mockReturnValue("test-passphrase");
   const homedirMock = vi.fn().mockReturnValue("/home/tester");
   const mkdirSyncMock = vi.fn();
+  const readFileSyncMock = vi.fn().mockReturnValue("file-passphrase\n");
   const serveMock = vi.fn();
   const logMock = vi.fn();
   const errorMock = vi.fn();
@@ -47,6 +48,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     platform: "linux",
     homedir: homedirMock,
     mkdirSync: mkdirSyncMock,
+    readFileSync: readFileSyncMock,
     deriveMasterKey: deriveMasterKeyMock,
     initDatabase: initDatabaseMock,
     router: routerMock,
@@ -61,6 +63,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     promptPassphraseMock,
     homedirMock,
     mkdirSyncMock,
+    readFileSyncMock,
     serveMock,
     logMock,
     errorMock,
@@ -145,6 +148,141 @@ describe("startServer", () => {
 
     expect(promptPassphrase).not.toHaveBeenCalled();
     expect(deps.deriveMasterKey).toHaveBeenCalledWith("inline-passphrase");
+  });
+
+  it("uses --passphrase-file and trims trailing newlines", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase-file", "/tmp/passphrase.txt"],
+      promptPassphrase: vi.fn(),
+      readFileSync: vi.fn().mockReturnValue("from-file\n"),
+    });
+
+    await startServer(deps);
+
+    expect(deps.readFileSync).toHaveBeenCalledWith("/tmp/passphrase.txt", "utf-8");
+    expect(deps.promptPassphrase).not.toHaveBeenCalled();
+    expect(deps.deriveMasterKey).toHaveBeenCalledWith("from-file");
+  });
+
+  it("uses VAULT_PASSPHRASE when flags are absent", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      env: { VAULT_PASSPHRASE: "env-passphrase" },
+      promptPassphrase: vi.fn(),
+    });
+
+    await startServer(deps);
+
+    expect(deps.promptPassphrase).not.toHaveBeenCalled();
+    expect(deps.deriveMasterKey).toHaveBeenCalledWith("env-passphrase");
+  });
+
+  it("uses VAULT_PASSPHRASE_FILE when flags are absent", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      env: { VAULT_PASSPHRASE_FILE: "/tmp/passphrase.txt" },
+      promptPassphrase: vi.fn(),
+      readFileSync: vi.fn().mockReturnValue("env-file-pass\n"),
+    });
+
+    await startServer(deps);
+
+    expect(deps.readFileSync).toHaveBeenCalledWith("/tmp/passphrase.txt", "utf-8");
+    expect(deps.promptPassphrase).not.toHaveBeenCalled();
+    expect(deps.deriveMasterKey).toHaveBeenCalledWith("env-file-pass");
+  });
+
+  it("prioritizes CLI passphrase over env vars", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase", "cli-passphrase"],
+      env: {
+        VAULT_PASSPHRASE: "env-passphrase",
+        VAULT_PASSPHRASE_FILE: "/tmp/passphrase.txt",
+      },
+    });
+
+    await startServer(deps);
+
+    expect(deps.deriveMasterKey).toHaveBeenCalledWith("cli-passphrase");
+    expect(deps.readFileSync).not.toHaveBeenCalled();
+  });
+
+  it("fails when both --passphrase and --passphrase-file are provided", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase", "one", "--passphrase-file", "/tmp/passphrase.txt"],
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith(
+      "Fatal: use either --passphrase or --passphrase-file, not both",
+    );
+    expect(deps.exitMock).toHaveBeenCalledWith(1);
+    expect(deps.serveMock).not.toHaveBeenCalled();
+  });
+
+  it("fails when both VAULT_PASSPHRASE and VAULT_PASSPHRASE_FILE are set", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      env: {
+        VAULT_PASSPHRASE: "one",
+        VAULT_PASSPHRASE_FILE: "/tmp/passphrase.txt",
+      },
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith(
+      "Fatal: use either VAULT_PASSPHRASE or VAULT_PASSPHRASE_FILE, not both",
+    );
+    expect(deps.exitMock).toHaveBeenCalledWith(1);
+    expect(deps.serveMock).not.toHaveBeenCalled();
+  });
+
+  it("fails fast when --passphrase-file has no value", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase-file"],
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith("Fatal: --passphrase-file flag requires a path");
+    expect(deps.exitMock).toHaveBeenCalledWith(1);
+    expect(deps.promptPassphraseMock).not.toHaveBeenCalled();
+    expect(deps.serveMock).not.toHaveBeenCalled();
+  });
+
+  it("fails when passphrase file cannot be read", async () => {
+    const { startServer } = await import("./index");
+    const readErr = new Error("no such file");
+    const deps = createDeps({
+      argv: ["--passphrase-file", "/tmp/missing.txt"],
+      readFileSync: vi.fn(() => {
+        throw readErr;
+      }),
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith(
+      "Fatal: failed to read passphrase file '/tmp/missing.txt':",
+      readErr,
+    );
+    expect(deps.exitMock).toHaveBeenCalledWith(1);
+    expect(deps.serveMock).not.toHaveBeenCalled();
+  });
+
+  it("fails when passphrase read from file is empty", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase-file", "/tmp/empty.txt"],
+      readFileSync: vi.fn().mockReturnValue("\n"),
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith("Fatal: passphrase from file cannot be empty");
+    expect(deps.exitMock).toHaveBeenCalledWith(1);
+    expect(deps.serveMock).not.toHaveBeenCalled();
   });
 
   it("fails fast when --passphrase has no value", async () => {

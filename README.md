@@ -1,44 +1,69 @@
 # MaxedVault Monorepo
 
-Bun-native monorepo for a local secrets vault system with:
+Bun-native monorepo for a local secrets vault system.
 
-- a **server** (`apps/server`) that stores encrypted secrets in SQLite
-- a **CLI client** (`apps/client`) to manage projects/secrets and inject them into processes
+This repository ships a **single unified binary**: `maxedvault`.
+That binary can run both roles:
+
+- **Server** (long-running process)
+- **Client CLI** (short-lived commands)
 
 ---
 
 ## Workspace Layout
 
-- `apps/server` — server package (`@maxed-vault/server`)
-- `apps/client` — client/CLI package (`@maxed-vault/client`)
-- root — Bun workspace config + shared scripts
+- `apps/app` — unified binary entrypoint (`@maxed-vault/app`)
+- `apps/server` — server implementation (`@maxed-vault/server`)
+- `apps/client` — client command implementation (`@maxed-vault/client`)
+- root — workspace config and scripts
 
 ---
 
-## How the App Works (High Level)
+## How the App Works
 
-1. You start the server and provide a **vault passphrase**.
-2. The server derives an in-memory master key from that passphrase.
-3. Secret values are encrypted before writing to SQLite.
-4. The client talks to server HTTP endpoints to create projects, set/get/list/delete secrets.
-5. The client can export secrets as shell env exports (`env`) or run commands with injected env vars (`run`).
+1. Start server via unified binary (`maxedvault server ...`).
+2. Server derives an in-memory master key from a passphrase.
+3. Secret values are encrypted and stored in SQLite.
+4. Client commands call server HTTP endpoints to manage projects/secrets.
+5. Secrets can be exported or injected into child processes (`env` / `run`).
 
 ### Encryption model
 
-- Key derivation: **PBKDF2-SHA256** (600,000 iterations)
-- Encryption: **AES-256-GCM**
+- KDF: **PBKDF2-SHA256**
+- Iterations: **600,000**
+- Cipher: **AES-256-GCM**
 - Per-secret random IV (12 bytes)
-- Stored in DB as `encrypted_value` + `iv` (base64)
+- Stored payload columns: `encrypted_value`, `iv` (base64)
 
 Passphrase role:
 
-- The passphrase is required at startup to derive the master key.
-- It is **not persisted** by the app.
-- You must use the same passphrase to decrypt existing secrets after restart.
+- Required at server startup
+- Not persisted by app code
+- Must match previous passphrase to decrypt existing vault data
 
 ---
 
-## Installation & Basic Checks
+## Local Files
+
+### Server DB location
+
+Default (when `VAULT_DB_PATH` is unset):
+
+- macOS: `~/Library/Application Support/maxedvault/vault.db`
+- Linux: `$XDG_DATA_HOME/maxedvault/vault.db` or `~/.local/share/maxedvault/vault.db`
+
+SQLite WAL sidecar files are created next to DB:
+
+- `vault.db-wal`
+- `vault.db-shm`
+
+### Client config location
+
+- `~/.maxedvault/config.json` (file mode `0600`)
+
+---
+
+## Install & Verify
 
 ```bash
 bun install
@@ -49,174 +74,162 @@ bun run check
 
 ---
 
-## Run from Source
-
-### 1) Start server
+## Run From Source (Unified App)
 
 ```bash
-cd apps/server
-cp .env.example .env
-bun run start
+cd apps/app
 ```
 
-You will be prompted for the passphrase.
-
-Alternative (non-interactive):
+Start server:
 
 ```bash
-bun run start -- --passphrase "your-strong-passphrase"
-# or
-bun run start -- --passphrase=your-strong-passphrase
+bun run src/index.ts server
+# equivalent forms:
+bun run src/index.ts server start
+bun run src/index.ts server run
 ```
 
-### 2) Configure client
+Passphrase examples:
 
 ```bash
-cd apps/client
+# direct passphrase
+bun run src/index.ts server --passphrase "your-strong-passphrase"
+
+# passphrase file
+bun run src/index.ts server --passphrase-file /absolute/path/passphrase.txt
+```
+
+Initialize client config:
+
+```bash
+# prompt mode (recommended)
+bun run src/index.ts init
+
+# explicit URL
 bun run src/index.ts init --server http://localhost:8420
 ```
 
-This writes client config to:
-
-- `~/.maxedvault/config.json` (mode `0600`)
-
-### 3) Typical flow
+Typical flow:
 
 ```bash
 bun run src/index.ts project create infographics
 echo "super-secret" | bun run src/index.ts set WEBHOOK_SECRET --project infographics
 bun run src/index.ts get WEBHOOK_SECRET --project infographics
-bun run src/index.ts ls --project infographics
 bun run src/index.ts env --project infographics
 bun run src/index.ts run --project infographics -- npm start
+bun run src/index.ts status
 ```
 
 ---
 
-## CLI Command Reference (All Commands & Flags)
+## Complete Command + Flag Reference
 
-Binary name: `maxedvault`
+Binary: `maxedvault`
 
-> When running from source inside `apps/client`, replace `maxedvault` with `bun run src/index.ts`.
-> No short flags are currently supported.
+> When running from source, replace `maxedvault` with `bun run src/index.ts` from `apps/app`.
 
-### Conventions & validation rules
+### Global help
 
-- **Project slug** must match lowercase slug format: `^[a-z0-9]+(?:-[a-z0-9]+)*$`
-- **Secret name** must be env-var-safe: `^[A-Za-z_][A-Za-z0-9_]*$`
+- `maxedvault help`
+- `maxedvault help server`
+- `maxedvault --help`
+- `maxedvault -h`
 
-### Command summary
+### Server commands
 
-| Command | Required flags/options | Description |
+- `maxedvault server`
+- `maxedvault server start`
+- `maxedvault server run`
+
+Server flags:
+
+- `--passphrase <value>`
+- `--passphrase=<value>`
+- `--passphrase-file <path>`
+- `--passphrase-file=<path>`
+
+Rules:
+
+- Use **either** passphrase flag **or** passphrase-file flag, not both.
+- If no passphrase source is provided, interactive prompt is used.
+
+### Client commands
+
+| Command | Flags/options | Description |
 |---|---|---|
-| `init` | `--server <url>` | Save server URL in local config |
-| `status` | none | Print configured server + `/health` status |
+| `init` | optional: `--server <url-or-host>` | Save server URL in local config |
+| `status` | none | Print configured server and health status |
 | `project create <slug>` | none | Create project |
 | `project ls` | none | List projects |
-| `set <name>` | `--project <slug>` | Create/update a secret value |
-| `get <name>` | `--project <slug>` | Print one secret value |
-| `ls [prefix]` | `--project <slug>` | List secret names, optionally filtered by prefix |
-| `rm <name>` | `--project <slug>` | Delete a secret |
-| `env` | `--project <slug>` | Print all secrets as `export KEY='value'` lines |
-| `run --project <slug> -- <command> [args...]` | `--project <slug>` + `--` separator | Run command with all project secrets injected into env |
+| `set <name>` | required: `--project <slug>` | Create/update secret |
+| `get <name>` | required: `--project <slug>` | Print one secret value |
+| `ls [prefix]` | required: `--project <slug>` | List secret names (optional prefix) |
+| `rm <name>` | required: `--project <slug>` | Delete secret |
+| `env` | required: `--project <slug>` | Print shell exports for all project secrets |
+| `run --project <slug> -- <command> [args...]` | required: `--project <slug>` and `--` separator | Run command with project secrets injected into env |
 
-### Detailed usage
+Validation rules:
 
-#### `maxedvault init --server <url>`
+- project slug: `^[a-z0-9]+(?:-[a-z0-9]+)*$`
+- secret name: `^[A-Za-z_][A-Za-z0-9_]*$`
 
-- Required flag: `--server <url>`
-- Stores URL in `~/.maxedvault/config.json`
+### `init` URL resolution behavior
 
-Example:
+`maxedvault init` (or `init --server ...`) accepts:
+
+- full URL (`http://...` / `https://...`) → saved as given (normalized)
+- host/IP without scheme (`localhost:8420`, `127.0.0.1:8420`, etc.) →
+  - tries `https://<input>/health`
+  - then tries `http://<input>/health`
+  - saves the first reachable one
+  - errors if neither is reachable
+
+---
+
+## Passphrase Sources (Server)
+
+Supported sources, in precedence order:
+
+1. CLI flags:
+   - `--passphrase ...`
+   - `--passphrase-file ...`
+2. Environment variables:
+   - `VAULT_PASSPHRASE`
+   - `VAULT_PASSPHRASE_FILE`
+3. Interactive prompt
+
+Notes:
+
+- `--passphrase` and `--passphrase-file` are mutually exclusive.
+- `VAULT_PASSPHRASE` and `VAULT_PASSPHRASE_FILE` are mutually exclusive.
+- Passphrase file content has trailing newlines stripped.
+
+---
+
+## Output Streams
+
+- Normal/success output is written to **stdout**.
+- Errors are written to **stderr**.
+
+This includes command confirmations like create/update/delete/configured.
+
+---
+
+## Load Secrets Into Processes
+
+Single secret:
 
 ```bash
-maxedvault init --server http://localhost:8420
+export WEBHOOK_SECRET="$(maxedvault get WEBHOOK_SECRET --project infographics)"
 ```
 
-#### `maxedvault status`
-
-- No flags
-- Shows configured server and health check result
-
-#### `maxedvault project create <slug>`
-
-- Positional: `<slug>`
-
-Example:
+All secrets in current shell:
 
 ```bash
-maxedvault project create infographics
-```
-
-#### `maxedvault project ls`
-
-- No flags
-
-#### `maxedvault set <name> --project <slug>`
-
-- Positional: `<name>`
-- Required flag: `--project <slug>`
-- Value input behavior:
-  - if stdin is piped: reads value from stdin
-  - if stdin is interactive: prompts `Enter secret value:` and reads input
-
-Examples:
-
-```bash
-echo "abc123" | maxedvault set WEBHOOK_SECRET --project infographics
-maxedvault set WEBHOOK_SECRET --project infographics
-```
-
-#### `maxedvault get <name> --project <slug>`
-
-- Positional: `<name>`
-- Required flag: `--project <slug>`
-- Writes raw secret value to stdout (pipe-friendly)
-
-Example:
-
-```bash
-maxedvault get WEBHOOK_SECRET --project infographics
-```
-
-#### `maxedvault ls [prefix] --project <slug>`
-
-- Optional positional: `[prefix]`
-- Required flag: `--project <slug>`
-
-Examples:
-
-```bash
-maxedvault ls --project infographics
-maxedvault ls WEB --project infographics
-```
-
-#### `maxedvault rm <name> --project <slug>`
-
-- Positional: `<name>`
-- Required flag: `--project <slug>`
-
-#### `maxedvault env --project <slug>`
-
-- Required flag: `--project <slug>`
-- Prints shell `export` lines for all project secrets
-
-Example:
-
-```bash
-maxedvault env --project infographics
-# load into current shell
 eval "$(maxedvault env --project infographics)"
 ```
 
-#### `maxedvault run --project <slug> -- <command> [args...]`
-
-- Required flag: `--project <slug>`
-- Required separator: `--`
-- Everything after `--` is executed as child command
-- Child env = current process env + project secrets
-
-Example:
+All secrets for one child process:
 
 ```bash
 maxedvault run --project infographics -- npm start
@@ -224,35 +237,19 @@ maxedvault run --project infographics -- npm start
 
 ---
 
-## Server Runtime Reference (Flags + Env)
+## Server Environment Variables
 
-Binary/source entrypoint: `apps/server/src/index.ts`
-
-### Server CLI flags
-
-- `--passphrase <value>`
-- `--passphrase=<value>`
-
-If omitted, the server prompts for passphrase interactively.
-
-### Server environment variables
-
-- `VAULT_PORT` (default: `8420`)
-- `VAULT_DB_PATH` (absolute/relative path to SQLite DB)
-- `XDG_DATA_HOME` (Linux only, used for default DB location when `VAULT_DB_PATH` is unset)
-
-### Default DB location (when `VAULT_DB_PATH` is not set)
-
-- macOS: `~/Library/Application Support/maxedvault/vault.db`
-- Linux: `$XDG_DATA_HOME/maxedvault/vault.db` or `~/.local/share/maxedvault/vault.db`
-
-SQLite WAL sidecar files are also created next to DB (`-wal`, `-shm`).
+- `VAULT_PORT` (default `8420`)
+- `VAULT_DB_PATH` (override SQLite DB path)
+- `XDG_DATA_HOME` (Linux DB base path when `VAULT_DB_PATH` is unset)
+- `VAULT_PASSPHRASE`
+- `VAULT_PASSPHRASE_FILE`
 
 ---
 
-## HTTP API Reference
+## HTTP API
 
-Base URL: configured server (e.g. `http://localhost:8420`)
+Base URL = configured server URL (example: `http://localhost:8420`)
 
 - `GET /health`
 - `POST /projects`
@@ -263,93 +260,59 @@ Base URL: configured server (e.g. `http://localhost:8420`)
 - `DELETE /projects/:project/secrets/:name`
 - `GET /projects/:project/secrets-env`
 
-Notes:
+Bodies:
 
-- `POST /projects` body: `{ "name": "<slug>" }`
-- `PUT .../secrets/:name` body: `{ "value": "<secret>" }`
+- `POST /projects`: `{ "name": "<slug>" }`
+- `PUT /projects/:project/secrets/:name`: `{ "value": "<secret>" }`
 
 ---
 
-## Build Standalone Binaries
+## Build (Single Binary)
 
-### Build from root (recommended)
-
-```bash
-# client + server (local platform)
-bun run build:bin
-
-# client + server production-oriented build
-bun run build:bin:prod
-
-# package-specific wrappers
-bun run build:bin:client
-bun run build:bin:server
-bun run build:bin:client:prod
-bun run build:bin:server:prod
-```
-
-### Build inside each package
-
-#### Client (`apps/client`)
+From repo root:
 
 ```bash
+# local platform
 bun run build:bin
+
+# local platform, production-oriented
 bun run build:bin:prod
+
+# cross-target
 bun run build:bin:linux-x64
 bun run build:bin:darwin-arm64
 ```
 
 Outputs:
 
-- `apps/client/dist/maxedvault`
-- `apps/client/dist/maxedvault-linux-x64`
-- `apps/client/dist/maxedvault-darwin-arm64`
+- `apps/app/dist/maxedvault`
+- `apps/app/dist/maxedvault-linux-x64`
+- `apps/app/dist/maxedvault-darwin-arm64`
 
-#### Server (`apps/server`)
-
-```bash
-bun run build:bin
-bun run build:bin:prod
-bun run build:bin:linux-x64
-bun run build:bin:darwin-arm64
-```
-
-Outputs:
-
-- `apps/server/dist/maxedvault-server`
-- `apps/server/dist/maxedvault-server-linux-x64`
-- `apps/server/dist/maxedvault-server-darwin-arm64`
-
-### Run compiled binaries
+Run compiled binary:
 
 ```bash
-# server
-./apps/server/dist/maxedvault-server --passphrase "your-strong-passphrase"
-
-# client
-./apps/client/dist/maxedvault init --server http://localhost:8420
-./apps/client/dist/maxedvault status
+./apps/app/dist/maxedvault help
+./apps/app/dist/maxedvault server
+./apps/app/dist/maxedvault init
 ```
 
 ---
 
-## Repository Scripts (Complete)
+## Repository Scripts
 
-### Root `package.json`
+### Root scripts
 
 - `bun run test`
 - `bun run check`
-- `bun run build:bin:client`
-- `bun run build:bin:server`
 - `bun run build:bin`
-- `bun run build:bin:client:prod`
-- `bun run build:bin:server:prod`
 - `bun run build:bin:prod`
+- `bun run build:bin:linux-x64`
+- `bun run build:bin:darwin-arm64`
 
-### Server package scripts (`apps/server/package.json`)
+### `apps/app` scripts
 
 - `bun run dev`
-- `bun run start`
 - `bun run build:bin`
 - `bun run build:bin:prod`
 - `bun run build:bin:linux-x64`
@@ -358,13 +321,17 @@ Outputs:
 - `bun run test:watch`
 - `bun run check`
 
-### Client package scripts (`apps/client/package.json`)
+### `apps/server` scripts
 
 - `bun run dev`
-- `bun run build:bin`
-- `bun run build:bin:prod`
-- `bun run build:bin:linux-x64`
-- `bun run build:bin:darwin-arm64`
+- `bun run start`
+- `bun run test`
+- `bun run test:watch`
+- `bun run check`
+
+### `apps/client` scripts
+
+- `bun run dev`
 - `bun run test`
 - `bun run test:watch`
 - `bun run check`
@@ -373,7 +340,7 @@ Outputs:
 
 ## Security Notes
 
-- Do not pass real passphrases/secrets in shell history on shared systems.
-- Prefer interactive passphrase entry for server startup where possible.
-- Keep `~/.maxedvault/config.json` and DB files protected by OS permissions.
-- There is currently no auth layer between client and server; use trusted/local network boundaries.
+- Avoid exposing passphrases in shell history on shared systems.
+- Prefer interactive passphrase input where possible.
+- Keep DB/config files protected by OS permissions.
+- Server currently has no auth boundary beyond deployment/network setup; run in trusted environments.

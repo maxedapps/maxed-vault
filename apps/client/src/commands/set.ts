@@ -48,5 +48,5 @@ export async function cmdSet(project: string, name: string): Promise<void> {
     process.exit(1);
   }
 
-  console.error(data.created ? `Created ${project}/${name}` : `Updated ${project}/${name}`);
+  console.log(data.created ? `Created ${project}/${name}` : `Updated ${project}/${name}`);
 }

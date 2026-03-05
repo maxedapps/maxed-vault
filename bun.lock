@@ -9,6 +9,13 @@
         "vitest": "^4.0.18",
       },
     },
+    "apps/app": {
+      "name": "@maxed-vault/app",
+      "version": "0.1.0",
+      "bin": {
+        "maxedvault": "src/index.ts",
+      },
+    },
     "apps/client": {
       "name": "@maxed-vault/client",
       "version": "0.1.0",
@@ -72,6 +79,8 @@
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.27.3", "", { "os": "win32", "cpu": "x64" }, "sha512-4uJGhsxuptu3OcpVAzli+/gWusVGwZZHTlS63hh++ehExkVT8SgiEf7/uC/PclrPPkLhZqGgCTjd0VWLo6xMqA=="],
 
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
+
+    "@maxed-vault/app": ["@maxed-vault/app@workspace:apps/app"],
 
     "@maxed-vault/client": ["@maxed-vault/client@workspace:apps/client"],
 

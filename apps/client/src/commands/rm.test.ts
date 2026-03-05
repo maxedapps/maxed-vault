@@ -22,6 +22,7 @@ describe("cmdRm", () => {
   beforeEach(() => {
     vaultFetchMock.mockReset();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -36,7 +37,7 @@ describe("cmdRm", () => {
     expect(vaultFetchMock).toHaveBeenCalledWith("/projects/infographics/secrets/TOKEN", {
       method: "DELETE",
     });
-    expect(console.error).toHaveBeenCalledWith("Deleted infographics/TOKEN");
+    expect(console.log).toHaveBeenCalledWith("Deleted infographics/TOKEN");
   });
 
   it("prints API error and exits when delete fails", async () => {

@@ -9,6 +9,9 @@ import { cmdProjectCreate, cmdProjectLs } from "./commands/project.ts";
 import { cmdEnv } from "./commands/env.ts";
 import { cmdRun } from "./commands/run.ts";
 
+type PromptInput = (message: string) => string | null;
+type ProbeServerUrl = (serverUrl: string) => Promise<boolean>;
+
 export interface CliDeps {
   argv: string[];
   parseArgs: typeof parseArgs;
@@ -22,6 +25,9 @@ export interface CliDeps {
   cmdProjectLs: typeof cmdProjectLs;
   cmdEnv: typeof cmdEnv;
   cmdRun: typeof cmdRun;
+  promptInput: PromptInput;
+  probeServerUrl: ProbeServerUrl;
+  log: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
   exit: (code: number) => never;
 }
@@ -43,6 +49,21 @@ function buildCliDeps(overrides: Partial<CliDeps> = {}): CliDeps {
     cmdProjectLs,
     cmdEnv,
     cmdRun,
+    promptInput: (message) => {
+      const runtimePrompt = (globalThis as { prompt?: (msg: string) => string | null }).prompt;
+      return runtimePrompt ? runtimePrompt(message) : null;
+    },
+    probeServerUrl: async (serverUrl) => {
+      try {
+        const res = await fetch(`${serverUrl}/health`);
+        if (!res.ok) return false;
+        const data = (await res.json().catch(() => null)) as { status?: string } | null;
+        return data?.status === "ok";
+      } catch {
+        return false;
+      }
+    },
+    log: console.log,
     error: console.error,
     exit: (code: number): never => process.exit(code),
     ...overrides,
@@ -52,6 +73,54 @@ function buildCliDeps(overrides: Partial<CliDeps> = {}): CliDeps {
 function fail(message: string, deps: CliDeps): never {
   deps.error(message);
   return deps.exit(1);
+}
+
+function normalizeServerInput(input: string): string {
+  return input.trim().replace(/\/+$/, "");
+}
+
+function hasHttpScheme(input: string): boolean {
+  return /^https?:\/\//i.test(input);
+}
+
+async function resolveInitServerUrl(rawServer: string, deps: CliDeps): Promise<string> {
+  const normalizedInput = normalizeServerInput(rawServer);
+  if (!normalizedInput) {
+    fail("Server URL is required. Usage: maxedvault init [--server <url>]", deps);
+  }
+
+  if (hasHttpScheme(normalizedInput)) {
+    return normalizedInput;
+  }
+
+  const candidates = [`https://${normalizedInput}`, `http://${normalizedInput}`];
+  for (const candidate of candidates) {
+    if (await deps.probeServerUrl(candidate)) {
+      return candidate;
+    }
+  }
+
+  fail(
+    `Could not reach server via https://${normalizedInput} or http://${normalizedInput}. ` +
+      "Start the server and try again, or pass a full URL with --server.",
+    deps,
+  );
+}
+
+async function resolveInitServerArg(serverArg: string | undefined, deps: CliDeps): Promise<string> {
+  if (typeof serverArg === "string" && serverArg.trim().length > 0) {
+    return resolveInitServerUrl(serverArg, deps);
+  }
+
+  const prompted = deps.promptInput("Server URL or host (e.g. localhost:8420): ");
+  if (!prompted || prompted.trim().length === 0) {
+    fail(
+      "Server URL is required. Usage: maxedvault init [--server <url>]",
+      deps,
+    );
+  }
+
+  return resolveInitServerUrl(prompted, deps);
 }
 
 export function parseRunInput(
@@ -115,11 +184,9 @@ export async function runCli(rawArgs: string[], overrides: Partial<CliDeps> = {}
 
   switch (command) {
     case "init": {
-      if (!values.server) {
-        fail("Usage: maxedvault init --server <url>", deps);
-      }
-      await deps.saveConfig(values.server);
-      deps.error(`Configured server: ${values.server}`);
+      const server = await resolveInitServerArg(values.server, deps);
+      await deps.saveConfig(server);
+      deps.log(`Configured server: ${server}`);
       break;
     }
     case "get": {
@@ -184,11 +251,6 @@ export async function runCli(rawArgs: string[], overrides: Partial<CliDeps> = {}
       fail("Usage: maxedvault <init|get|set|ls|rm|status|project|env|run>", deps);
     }
   }
-}
-
-export async function main(overrides: Partial<CliDeps> = {}): Promise<void> {
-  const deps = buildCliDeps(overrides);
-  await runCli(deps.argv, deps);
 }
 
 export async function runCliEntrypoint(overrides: Partial<CliDeps> = {}): Promise<void> {

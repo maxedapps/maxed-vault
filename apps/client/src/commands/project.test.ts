@@ -32,7 +32,7 @@ describe("project commands", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "infographics" }),
     });
-    expect(console.error).toHaveBeenCalledWith("Created project infographics");
+    expect(console.log).toHaveBeenCalledWith("Created project infographics");
   });
 
   it("lists projects", async () => {

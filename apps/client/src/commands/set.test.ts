@@ -35,6 +35,7 @@ describe("cmdSet", () => {
   beforeEach(() => {
     vaultFetchMock.mockReset();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   });
 
@@ -58,7 +59,7 @@ describe("cmdSet", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: "abc123" }),
     });
-    expect(console.error).toHaveBeenCalledWith("Created infographics/WEBHOOK_SECRET");
+    expect(console.log).toHaveBeenCalledWith("Created infographics/WEBHOOK_SECRET");
   });
 
   it("uses a reader prompt when stdin is a TTY", async () => {
@@ -73,7 +74,7 @@ describe("cmdSet", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: "typed-secret" }),
     });
-    expect(console.error).toHaveBeenCalledWith("Updated infographics/WEBHOOK_SECRET");
+    expect(console.log).toHaveBeenCalledWith("Updated infographics/WEBHOOK_SECRET");
   });
 
   it("supports Bun stdin isTTY as a boolean", async () => {
@@ -88,7 +89,7 @@ describe("cmdSet", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: "typed-secret" }),
     });
-    expect(console.error).toHaveBeenCalledWith("Updated infographics/WEBHOOK_SECRET");
+    expect(console.log).toHaveBeenCalledWith("Updated infographics/WEBHOOK_SECRET");
   });
 
   it("fails when no value is provided", async () => {

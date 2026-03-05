@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { deriveMasterKey } from "./crypto";
@@ -8,12 +8,19 @@ import type { Context } from "./types";
 
 type PromptPassphrase = (message: string) => string | null;
 
+interface ParsedPassphraseArgs {
+  passphrase?: string;
+  passphraseFile?: string;
+  error?: string;
+}
+
 export interface ServerDeps {
   env: NodeJS.ProcessEnv;
   argv: string[];
   platform: NodeJS.Platform;
   homedir: () => string;
   mkdirSync: typeof mkdirSync;
+  readFileSync: typeof readFileSync;
   deriveMasterKey: typeof deriveMasterKey;
   initDatabase: typeof initDatabase;
   router: typeof router;
@@ -31,6 +38,7 @@ function buildServerDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
     platform: process.platform,
     homedir,
     mkdirSync,
+    readFileSync,
     deriveMasterKey,
     initDatabase,
     router,
@@ -38,7 +46,7 @@ function buildServerDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
       const runtimePrompt = (globalThis as { prompt?: (msg: string) => string | null }).prompt;
       if (!runtimePrompt) {
         throw new Error(
-          "Interactive prompt is unavailable in this runtime. Start with --passphrase <value>.",
+          "Interactive prompt is unavailable in this runtime. Use --passphrase/--passphrase-file or env vars.",
         );
       }
       return runtimePrompt(message);
@@ -51,10 +59,13 @@ function buildServerDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
   };
 }
 
-function parsePassphraseArg(argv: string[]): { passphrase?: string; error?: string } {
+function parsePassphraseArg(argv: string[]): ParsedPassphraseArgs {
   let passphrase: string | undefined;
+  let passphraseFile: string | undefined;
+
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+
     if (arg === "--passphrase") {
       const next = argv[i + 1];
       if (!next || next.startsWith("--")) {
@@ -64,8 +75,24 @@ function parsePassphraseArg(argv: string[]): { passphrase?: string; error?: stri
       i += 1;
       continue;
     }
+
     if (arg.startsWith("--passphrase=")) {
       passphrase = arg.slice("--passphrase=".length);
+      continue;
+    }
+
+    if (arg === "--passphrase-file") {
+      const next = argv[i + 1];
+      if (!next || next.startsWith("--")) {
+        return { error: "Fatal: --passphrase-file flag requires a path" };
+      }
+      passphraseFile = next;
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--passphrase-file=")) {
+      passphraseFile = arg.slice("--passphrase-file=".length);
     }
   }
 
@@ -73,11 +100,41 @@ function parsePassphraseArg(argv: string[]): { passphrase?: string; error?: stri
     return { error: "Fatal: --passphrase cannot be empty" };
   }
 
-  return { passphrase };
+  if (passphraseFile !== undefined && passphraseFile.trim().length === 0) {
+    return { error: "Fatal: --passphrase-file cannot be empty" };
+  }
+
+  if (passphrase && passphraseFile) {
+    return { error: "Fatal: use either --passphrase or --passphrase-file, not both" };
+  }
+
+  return { passphrase, passphraseFile };
+}
+
+function stripTrailingNewlines(input: string): string {
+  return input.replace(/[\r\n]+$/, "");
+}
+
+function readPassphraseFile(path: string, deps: ServerDeps): string {
+  let text: string;
+  try {
+    text = deps.readFileSync(path, "utf-8");
+  } catch (err) {
+    deps.error(`Fatal: failed to read passphrase file '${path}':`, err);
+    deps.exit(1);
+  }
+
+  const passphrase = stripTrailingNewlines(text);
+  if (passphrase.length === 0) {
+    deps.error("Fatal: passphrase from file cannot be empty");
+    deps.exit(1);
+  }
+
+  return passphrase;
 }
 
 function resolvePassphrase(deps: ServerDeps): string {
-  const { passphrase, error } = parsePassphraseArg(deps.argv);
+  const { passphrase, passphraseFile, error } = parsePassphraseArg(deps.argv);
   if (error) {
     deps.error(error);
     deps.exit(1);
@@ -85,6 +142,34 @@ function resolvePassphrase(deps: ServerDeps): string {
 
   if (passphrase) {
     return passphrase;
+  }
+
+  if (passphraseFile) {
+    return readPassphraseFile(passphraseFile, deps);
+  }
+
+  const envPassphrase = deps.env.VAULT_PASSPHRASE;
+  const envPassphraseFile = deps.env.VAULT_PASSPHRASE_FILE;
+
+  if (envPassphrase !== undefined && envPassphraseFile !== undefined) {
+    deps.error("Fatal: use either VAULT_PASSPHRASE or VAULT_PASSPHRASE_FILE, not both");
+    deps.exit(1);
+  }
+
+  if (envPassphrase !== undefined) {
+    if (envPassphrase.length === 0) {
+      deps.error("Fatal: VAULT_PASSPHRASE cannot be empty");
+      deps.exit(1);
+    }
+    return envPassphrase;
+  }
+
+  if (envPassphraseFile !== undefined) {
+    if (envPassphraseFile.trim().length === 0) {
+      deps.error("Fatal: VAULT_PASSPHRASE_FILE cannot be empty");
+      deps.exit(1);
+    }
+    return readPassphraseFile(envPassphraseFile, deps);
   }
 
   const prompted = deps.promptPassphrase("Vault passphrase: ");

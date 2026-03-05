@@ -12,5 +12,5 @@ export async function cmdRm(project: string, name: string): Promise<void> {
     process.exit(1);
   }
 
-  console.error(`Deleted ${project}/${name}`);
+  console.log(`Deleted ${project}/${name}`);
 }
