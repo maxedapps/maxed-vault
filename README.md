@@ -27,9 +27,11 @@ Secrets are encrypted at rest in SQLite and decrypted only when returned by the 
 
 - KDF: `PBKDF2-SHA256`
 - Iterations: `600000`
+- Per-vault random salt stored in `vault_meta`
 - Cipher: `AES-256-GCM`
 - Per-secret random IV (12 bytes)
 - Stored payload columns: `encrypted_value`, `iv`
+- New vaults store an encrypted verifier so wrong passphrases fail fast on startup
 
 ## Local Files
 
@@ -84,6 +86,19 @@ bun run src/index.ts server start
 bun run src/index.ts server run
 ```
 
+Bind host examples:
+
+```bash
+# default: all interfaces
+bun run src/index.ts server --passphrase-file /absolute/path/passphrase.txt
+
+# local-only
+bun run src/index.ts server --host 127.0.0.1 --passphrase-file /absolute/path/passphrase.txt
+
+# specific Tailscale IP
+bun run src/index.ts server --host 100.64.0.10 --passphrase-file /absolute/path/passphrase.txt
+```
+
 Configure the client:
 
 ```bash
@@ -123,6 +138,8 @@ Binary: `maxedvault`
 
 Server flags:
 
+- `--host <value>`
+- `--host=<value>`
 - `--passphrase <value>`
 - `--passphrase=<value>`
 - `--passphrase-file <path>`
@@ -133,6 +150,12 @@ Passphrase precedence:
 1. CLI flags
 2. `VAULT_PASSPHRASE` or `VAULT_PASSPHRASE_FILE`
 3. interactive prompt
+
+Notes:
+
+- Default bind host is `0.0.0.0` (all interfaces), not `localhost`
+- Set `VAULT_HOST` or `--host` to restrict the bind address
+- New vault creation emits a weak-passphrase warning when the chosen passphrase looks weak
 
 ### Client commands
 
@@ -210,6 +233,7 @@ maxedvault run --project infographics -- bun run dev
 
 ## Server Environment Variables
 
+- `VAULT_HOST` (default `0.0.0.0`)
 - `VAULT_PORT` (default `8420`)
 - `VAULT_DB_PATH`
 - `XDG_DATA_HOME`

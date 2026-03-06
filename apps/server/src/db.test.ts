@@ -31,6 +31,7 @@ describe("initDatabase", () => {
     const schema = execMock.mock.calls[2]?.[0] as string;
     expect(schema).toContain("CREATE TABLE IF NOT EXISTS projects");
     expect(schema).toContain("CREATE TABLE IF NOT EXISTS secrets");
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS vault_meta");
     expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_projects_name");
     expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_secrets_project_name");
   });

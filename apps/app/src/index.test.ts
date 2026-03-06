@@ -63,6 +63,7 @@ describe("runApp", () => {
 
     expect(deps.log).toHaveBeenCalledWith(expect.stringContaining("maxedvault secret set <name>"));
     expect(deps.log).toHaveBeenCalledWith(expect.stringContaining("maxedvault project use <slug>"));
+    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining("--host <value>"));
   });
 
   it("prints usage and exits for invalid server subcommands", async () => {

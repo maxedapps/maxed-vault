@@ -19,6 +19,14 @@ CREATE TABLE IF NOT EXISTS secrets (
   UNIQUE(project_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS vault_meta (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  salt TEXT NOT NULL,
+  check_ciphertext TEXT NOT NULL,
+  check_iv TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name);
 CREATE INDEX IF NOT EXISTS idx_secrets_project_name ON secrets(project_id, name);
 `;

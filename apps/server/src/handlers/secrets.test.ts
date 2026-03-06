@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { deriveMasterKey } from "../crypto";
+import { deriveMasterKey, generateSalt } from "../crypto";
 import {
   handleDeleteSecret,
   handleGetSecret,
@@ -12,7 +12,7 @@ import { FakeDb } from "../test-utils/fake-db";
 let masterKey: CryptoKey;
 
 beforeAll(async () => {
-  masterKey = await deriveMasterKey("test-passphrase");
+  masterKey = await deriveMasterKey("test-passphrase", generateSalt());
 });
 
 function createContext() {

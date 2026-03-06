@@ -1,7 +1,11 @@
 const PBKDF2_ITERATIONS = 600_000;
-const SALT = new TextEncoder().encode("maxedvault-domain-separation-salt");
+const LEGACY_STATIC_SALT = new TextEncoder().encode("maxedvault-domain-separation-salt");
 
-export async function deriveMasterKey(passphrase: string): Promise<CryptoKey> {
+function decodeSalt(salt: string): Uint8Array {
+  return Buffer.from(salt, "base64");
+}
+
+async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(passphrase),
@@ -11,12 +15,25 @@ export async function deriveMasterKey(passphrase: string): Promise<CryptoKey> {
   );
 
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt: SALT, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false,
     ["encrypt", "decrypt"],
   );
+}
+
+export function generateSalt(): string {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return Buffer.from(salt).toString("base64");
+}
+
+export async function deriveMasterKey(passphrase: string, salt: string): Promise<CryptoKey> {
+  return deriveKey(passphrase, decodeSalt(salt));
+}
+
+export async function deriveLegacyMasterKey(passphrase: string): Promise<CryptoKey> {
+  return deriveKey(passphrase, LEGACY_STATIC_SALT);
 }
 
 export async function encryptSecret(

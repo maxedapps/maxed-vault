@@ -8,6 +8,13 @@ type SecretRow = {
   created_at: string;
   updated_at: string;
 };
+type VaultMetaRow = {
+  id: number;
+  salt: string;
+  check_ciphertext: string;
+  check_iv: string;
+  created_at: string;
+};
 
 function nowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -16,6 +23,7 @@ function nowIso(): string {
 export class FakeDb {
   private projects: ProjectRow[] = [];
   private secrets: SecretRow[] = [];
+  private vaultMeta: VaultMetaRow | null = null;
   private nextProjectId = 1;
   private nextSecretId = 1;
 
@@ -35,7 +43,35 @@ export class FakeDb {
 
   close(): void {}
 
+  exec(sql: string): void {
+    const normalizedSql = sql.replace(/\s+/g, " ").trim();
+
+    if (
+      normalizedSql === "BEGIN IMMEDIATE" ||
+      normalizedSql === "COMMIT" ||
+      normalizedSql === "ROLLBACK"
+    ) {
+      return;
+    }
+
+    throw new Error(`Unsupported exec SQL in FakeDb: ${sql}`);
+  }
+
   private get(sql: string, args: unknown[]): unknown {
+    if (sql === "SELECT salt, check_ciphertext, check_iv FROM vault_meta WHERE id = 1") {
+      return this.vaultMeta
+        ? {
+            salt: this.vaultMeta.salt,
+            check_ciphertext: this.vaultMeta.check_ciphertext,
+            check_iv: this.vaultMeta.check_iv,
+          }
+        : null;
+    }
+
+    if (sql === "SELECT salt FROM vault_meta WHERE id = 1") {
+      return this.vaultMeta ? { salt: this.vaultMeta.salt } : null;
+    }
+
     if (sql === "SELECT id FROM projects WHERE name = ?1") {
       const name = String(args[0]);
       const row = this.projects.find((project) => project.name === name);
@@ -70,6 +106,14 @@ export class FakeDb {
       return row ? { id: row.id } : null;
     }
 
+    if (sql === "SELECT encrypted_value, iv FROM secrets WHERE id = ?1") {
+      const secretId = Number(args[0]);
+      const row = this.secrets.find((secret) => secret.id === secretId);
+      return row
+        ? { encrypted_value: row.encrypted_value, iv: row.iv }
+        : null;
+    }
+
     if (sql === "DELETE FROM secrets WHERE project_id = ?1 AND name = ?2 RETURNING id") {
       const projectId = Number(args[0]);
       const name = String(args[1]);
@@ -85,6 +129,17 @@ export class FakeDb {
   }
 
   private all(sql: string, args: unknown[]): unknown[] {
+    if (sql === "SELECT id, encrypted_value, iv FROM secrets ORDER BY id") {
+      return this.secrets
+        .slice()
+        .sort((a, b) => a.id - b.id)
+        .map((secret) => ({
+          id: secret.id,
+          encrypted_value: secret.encrypted_value,
+          iv: secret.iv,
+        }));
+    }
+
     if (sql === "SELECT name FROM projects ORDER BY name") {
       return this.projects
         .slice()
@@ -119,6 +174,18 @@ export class FakeDb {
   }
 
   private run(sql: string, args: unknown[]): unknown {
+    if (sql === "INSERT INTO vault_meta (id, salt, check_ciphertext, check_iv) VALUES (1, ?1, ?2, ?3)") {
+      const timestamp = nowIso();
+      this.vaultMeta = {
+        id: 1,
+        salt: String(args[0]),
+        check_ciphertext: String(args[1]),
+        check_iv: String(args[2]),
+        created_at: timestamp,
+      };
+      return;
+    }
+
     if (sql === "INSERT INTO projects (name) VALUES (?1)") {
       const name = String(args[0]);
       this.projects.push({ id: this.nextProjectId++, name });
@@ -159,6 +226,17 @@ export class FakeDb {
       row.encrypted_value = encryptedValue;
       row.iv = iv;
       row.updated_at = nowIso();
+      return;
+    }
+
+    if (sql === "UPDATE secrets SET encrypted_value = ?1, iv = ?2 WHERE id = ?3") {
+      const encryptedValue = String(args[0]);
+      const iv = String(args[1]);
+      const secretId = Number(args[2]);
+      const row = this.secrets.find((secret) => secret.id === secretId);
+      if (!row) return;
+      row.encrypted_value = encryptedValue;
+      row.iv = iv;
       return;
     }
 

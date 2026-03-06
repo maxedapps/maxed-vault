@@ -1,17 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const defaultDeriveMasterKeyMock = vi.hoisted(() => vi.fn().mockResolvedValue({} as CryptoKey));
 const defaultInitDatabaseMock = vi.hoisted(() => vi.fn().mockReturnValue({ close: vi.fn() }));
+const defaultInitializeOrUnlockVaultMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ masterKey: {} as CryptoKey, mode: "opened" as const }),
+);
+const defaultGetWeakPassphraseWarningMock = vi.hoisted(() => vi.fn().mockReturnValue(null));
 const defaultRouterMock = vi.hoisted(() =>
   vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: "ok" }))),
 );
 
-vi.mock("./crypto", () => ({
-  deriveMasterKey: defaultDeriveMasterKeyMock,
-}));
-
 vi.mock("./db", () => ({
   initDatabase: defaultInitDatabaseMock,
+}));
+
+vi.mock("./vault", () => ({
+  initializeOrUnlockVault: defaultInitializeOrUnlockVaultMock,
+}));
+
+vi.mock("./passphrase", () => ({
+  getWeakPassphraseWarning: defaultGetWeakPassphraseWarningMock,
 }));
 
 vi.mock("./router", () => ({
@@ -28,8 +35,12 @@ class ExitError extends Error {
 }
 
 function createDeps(overrides: Record<string, unknown> = {}) {
-  const deriveMasterKeyMock = vi.fn().mockResolvedValue({} as CryptoKey);
-  const initDatabaseMock = vi.fn().mockReturnValue({ close: vi.fn() });
+  const db = { close: vi.fn() };
+  const initDatabaseMock = vi.fn().mockReturnValue(db);
+  const initializeOrUnlockVaultMock = vi
+    .fn()
+    .mockResolvedValue({ masterKey: {} as CryptoKey, mode: "opened" as const });
+  const getWeakPassphraseWarningMock = vi.fn().mockReturnValue(null);
   const routerMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true })));
   const promptPassphraseMock = vi.fn().mockReturnValue("test-passphrase");
   const homedirMock = vi.fn().mockReturnValue("/home/tester");
@@ -49,16 +60,19 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     homedir: homedirMock,
     mkdirSync: mkdirSyncMock,
     readFileSync: readFileSyncMock,
-    deriveMasterKey: deriveMasterKeyMock,
     initDatabase: initDatabaseMock,
+    initializeOrUnlockVault: initializeOrUnlockVaultMock,
+    getWeakPassphraseWarning: getWeakPassphraseWarningMock,
     router: routerMock,
     promptPassphrase: promptPassphraseMock,
     serve: serveMock,
     log: logMock,
     error: errorMock,
     exit: exitMock as unknown as (code: number) => never,
-    deriveMasterKeyMock,
+    db,
     initDatabaseMock,
+    initializeOrUnlockVaultMock,
+    getWeakPassphraseWarningMock,
     routerMock,
     promptPassphraseMock,
     homedirMock,
@@ -87,28 +101,35 @@ describe("startServer", () => {
     expect(deps.serveMock).not.toHaveBeenCalled();
   });
 
-  it("prompts for passphrase, then starts with default port/db and wires router fetch", async () => {
+  it("prompts for passphrase, then starts with default host/port/db and wires router fetch", async () => {
     const { startServer } = await import("./index");
     const key = {} as CryptoKey;
     const db = { close: vi.fn() };
     const deps = createDeps({
-      deriveMasterKey: vi.fn().mockResolvedValue(key),
       initDatabase: vi.fn().mockReturnValue(db),
+      initializeOrUnlockVault: vi
+        .fn()
+        .mockResolvedValue({ masterKey: key, mode: "opened" as const }),
       promptPassphrase: vi.fn().mockReturnValue("prompted-passphrase"),
     });
 
     const startCtx = await startServer(deps);
-    const [serveArgs] = deps.serveMock.mock.calls[0] as [{ port: number; fetch: (req: Request) => Promise<Response> }];
+    const [serveArgs] = deps.serveMock.mock.calls[0] as [
+      { hostname: string; port: number; fetch: (req: Request) => Promise<Response> },
+    ];
 
     expect(deps.promptPassphrase).toHaveBeenCalledWith("Vault passphrase: ");
-    expect(deps.deriveMasterKey).toHaveBeenCalledWith("prompted-passphrase");
     expect(deps.initDatabase).toHaveBeenCalledWith("/home/tester/.local/share/maxedvault/vault.db");
+    expect(deps.initializeOrUnlockVault).toHaveBeenCalledWith(db, "prompted-passphrase");
     expect(deps.mkdirSyncMock).toHaveBeenCalledWith("/home/tester/.local/share/maxedvault", {
       recursive: true,
     });
+    expect(serveArgs.hostname).toBe("0.0.0.0");
     expect(serveArgs.port).toBe(8420);
     expect(startCtx).toEqual({ db, masterKey: key });
-    expect(deps.logMock).toHaveBeenCalledWith("MaxedVault listening on http://localhost:8420");
+    expect(deps.logMock).toHaveBeenCalledWith(
+      "MaxedVault listening on 0.0.0.0:8420 (all interfaces)",
+    );
 
     const req = new Request("http://vault.local/health");
     const res = await serveArgs.fetch(req);
@@ -133,7 +154,7 @@ describe("startServer", () => {
     await startServer(deps);
 
     expect(promptPassphrase).not.toHaveBeenCalled();
-    expect(deps.deriveMasterKey).toHaveBeenCalledWith("flag-passphrase");
+    expect(deps.initializeOrUnlockVault).toHaveBeenCalledWith(deps.db, "flag-passphrase");
   });
 
   it("uses --passphrase=<value> form", async () => {
@@ -147,7 +168,7 @@ describe("startServer", () => {
     await startServer(deps);
 
     expect(promptPassphrase).not.toHaveBeenCalled();
-    expect(deps.deriveMasterKey).toHaveBeenCalledWith("inline-passphrase");
+    expect(deps.initializeOrUnlockVault).toHaveBeenCalledWith(deps.db, "inline-passphrase");
   });
 
   it("uses --passphrase-file and trims trailing newlines", async () => {
@@ -162,7 +183,7 @@ describe("startServer", () => {
 
     expect(deps.readFileSync).toHaveBeenCalledWith("/tmp/passphrase.txt", "utf-8");
     expect(deps.promptPassphrase).not.toHaveBeenCalled();
-    expect(deps.deriveMasterKey).toHaveBeenCalledWith("from-file");
+    expect(deps.initializeOrUnlockVault).toHaveBeenCalledWith(deps.db, "from-file");
   });
 
   it("uses VAULT_PASSPHRASE when flags are absent", async () => {
@@ -175,7 +196,7 @@ describe("startServer", () => {
     await startServer(deps);
 
     expect(deps.promptPassphrase).not.toHaveBeenCalled();
-    expect(deps.deriveMasterKey).toHaveBeenCalledWith("env-passphrase");
+    expect(deps.initializeOrUnlockVault).toHaveBeenCalledWith(deps.db, "env-passphrase");
   });
 
   it("uses VAULT_PASSPHRASE_FILE when flags are absent", async () => {
@@ -190,7 +211,7 @@ describe("startServer", () => {
 
     expect(deps.readFileSync).toHaveBeenCalledWith("/tmp/passphrase.txt", "utf-8");
     expect(deps.promptPassphrase).not.toHaveBeenCalled();
-    expect(deps.deriveMasterKey).toHaveBeenCalledWith("env-file-pass");
+    expect(deps.initializeOrUnlockVault).toHaveBeenCalledWith(deps.db, "env-file-pass");
   });
 
   it("prioritizes CLI passphrase over env vars", async () => {
@@ -205,8 +226,85 @@ describe("startServer", () => {
 
     await startServer(deps);
 
-    expect(deps.deriveMasterKey).toHaveBeenCalledWith("cli-passphrase");
+    expect(deps.initializeOrUnlockVault).toHaveBeenCalledWith(deps.db, "cli-passphrase");
     expect(deps.readFileSync).not.toHaveBeenCalled();
+  });
+
+  it("uses CLI host over env host", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase", "cli-passphrase", "--host", "100.64.0.10"],
+      env: { VAULT_HOST: "127.0.0.1" },
+    });
+
+    await startServer(deps);
+
+    const [serveArgs] = deps.serveMock.mock.calls[0] as [{ hostname: string; port: number }];
+    expect(serveArgs.hostname).toBe("100.64.0.10");
+    expect(deps.logMock).toHaveBeenCalledWith("MaxedVault listening on 100.64.0.10:8420");
+  });
+
+  it("uses VAULT_HOST when CLI host is absent", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase", "cli-passphrase"],
+      env: { VAULT_HOST: "127.0.0.1" },
+    });
+
+    await startServer(deps);
+
+    const [serveArgs] = deps.serveMock.mock.calls[0] as [{ hostname: string; port: number }];
+    expect(serveArgs.hostname).toBe("127.0.0.1");
+    expect(deps.logMock).toHaveBeenCalledWith("MaxedVault listening on 127.0.0.1:8420");
+  });
+
+  it("warns when a newly created vault uses a weak passphrase", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase", "weak-passphrase"],
+      initializeOrUnlockVault: vi
+        .fn()
+        .mockResolvedValue({ masterKey: {} as CryptoKey, mode: "created" as const }),
+      getWeakPassphraseWarning: vi
+        .fn()
+        .mockReturnValue("Weak passphrase warning: use at least 14 characters."),
+    });
+
+    await startServer(deps);
+
+    expect(deps.getWeakPassphraseWarning).toHaveBeenCalledWith("weak-passphrase");
+    expect(deps.errorMock).toHaveBeenCalledWith(
+      "Weak passphrase warning: use at least 14 characters.",
+    );
+  });
+
+  it("fails cleanly when vault verification rejects the passphrase", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase", "wrong-passphrase"],
+      initializeOrUnlockVault: vi
+        .fn()
+        .mockRejectedValue(new Error("Fatal: passphrase did not match this vault")),
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith("Fatal: passphrase did not match this vault");
+    expect(deps.db.close).toHaveBeenCalledTimes(1);
+    expect(deps.serveMock).not.toHaveBeenCalled();
+  });
+
+  it("does not evaluate passphrase strength for existing vaults", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase", "existing-passphrase"],
+      initializeOrUnlockVault: vi
+        .fn()
+        .mockResolvedValue({ masterKey: {} as CryptoKey, mode: "opened" as const }),
+    });
+
+    await startServer(deps);
+
+    expect(deps.getWeakPassphraseWarning).not.toHaveBeenCalled();
   });
 
   it("fails when both --passphrase and --passphrase-file are provided", async () => {
@@ -250,6 +348,29 @@ describe("startServer", () => {
     expect(deps.errorMock).toHaveBeenCalledWith("Fatal: --passphrase-file flag requires a path");
     expect(deps.exitMock).toHaveBeenCalledWith(1);
     expect(deps.promptPassphraseMock).not.toHaveBeenCalled();
+    expect(deps.serveMock).not.toHaveBeenCalled();
+  });
+
+  it("fails fast when --host has no value", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase", "secret", "--host"],
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith("Fatal: --host flag requires a value");
+    expect(deps.serveMock).not.toHaveBeenCalled();
+  });
+
+  it("fails when VAULT_HOST is empty", async () => {
+    const { startServer } = await import("./index");
+    const deps = createDeps({
+      argv: ["--passphrase", "secret"],
+      env: { VAULT_HOST: "   " },
+    });
+
+    await expect(startServer(deps)).rejects.toThrowError(ExitError);
+    expect(deps.errorMock).toHaveBeenCalledWith("Fatal: VAULT_HOST cannot be empty");
     expect(deps.serveMock).not.toHaveBeenCalled();
   });
 
@@ -323,11 +444,14 @@ describe("startServer", () => {
 
     await startServer(deps);
 
-    const [serveArgs] = deps.serveMock.mock.calls[0] as [{ port: number }];
+    const [serveArgs] = deps.serveMock.mock.calls[0] as [{ hostname: string; port: number }];
+    expect(serveArgs.hostname).toBe("0.0.0.0");
     expect(serveArgs.port).toBe(9999);
     expect(deps.initDatabase).toHaveBeenCalledWith("/tmp/custom-vault.db");
     expect(deps.mkdirSyncMock).toHaveBeenCalledWith("/tmp", { recursive: true });
-    expect(deps.logMock).toHaveBeenCalledWith("MaxedVault listening on http://localhost:9999");
+    expect(deps.logMock).toHaveBeenCalledWith(
+      "MaxedVault listening on 0.0.0.0:9999 (all interfaces)",
+    );
   });
 
   it("uses macOS Application Support default path when platform is darwin", async () => {
@@ -370,7 +494,7 @@ describe("runServerEntrypoint", () => {
     const { runServerEntrypoint } = await import("./index");
     const boom = new Error("boom");
     const deps = createDeps({
-      deriveMasterKey: vi.fn().mockRejectedValue(boom),
+      initializeOrUnlockVault: vi.fn().mockRejectedValue(boom),
     });
 
     await expect(runServerEntrypoint(deps)).rejects.toThrowError(ExitError);

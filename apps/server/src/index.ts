@@ -1,16 +1,18 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { deriveMasterKey } from "./crypto";
 import { initDatabase } from "./db";
+import { getWeakPassphraseWarning } from "./passphrase";
 import { router } from "./router";
 import type { Context } from "./types";
+import { initializeOrUnlockVault } from "./vault";
 
 type PromptPassphrase = (message: string) => string | null;
 
-interface ParsedPassphraseArgs {
+interface ParsedServerArgs {
   passphrase?: string;
   passphraseFile?: string;
+  host?: string;
   error?: string;
 }
 
@@ -21,11 +23,16 @@ export interface ServerDeps {
   homedir: () => string;
   mkdirSync: typeof mkdirSync;
   readFileSync: typeof readFileSync;
-  deriveMasterKey: typeof deriveMasterKey;
   initDatabase: typeof initDatabase;
+  initializeOrUnlockVault: typeof initializeOrUnlockVault;
+  getWeakPassphraseWarning: typeof getWeakPassphraseWarning;
   router: typeof router;
   promptPassphrase: PromptPassphrase;
-  serve: (options: { port: number; fetch: (req: Request) => Promise<Response> }) => unknown;
+  serve: (options: {
+    hostname: string;
+    port: number;
+    fetch: (req: Request) => Promise<Response>;
+  }) => unknown;
   log: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
   exit: (code: number) => never;
@@ -39,8 +46,9 @@ function buildServerDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
     homedir,
     mkdirSync,
     readFileSync,
-    deriveMasterKey,
     initDatabase,
+    initializeOrUnlockVault,
+    getWeakPassphraseWarning,
     router,
     promptPassphrase: (message) => {
       const runtimePrompt = (globalThis as { prompt?: (msg: string) => string | null }).prompt;
@@ -59,9 +67,10 @@ function buildServerDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
   };
 }
 
-function parsePassphraseArg(argv: string[]): ParsedPassphraseArgs {
+function parseServerArgs(argv: string[]): ParsedServerArgs {
   let passphrase: string | undefined;
   let passphraseFile: string | undefined;
+  let host: string | undefined;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -93,6 +102,21 @@ function parsePassphraseArg(argv: string[]): ParsedPassphraseArgs {
 
     if (arg.startsWith("--passphrase-file=")) {
       passphraseFile = arg.slice("--passphrase-file=".length);
+      continue;
+    }
+
+    if (arg === "--host") {
+      const next = argv[i + 1];
+      if (!next || next.startsWith("--")) {
+        return { error: "Fatal: --host flag requires a value" };
+      }
+      host = next;
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--host=")) {
+      host = arg.slice("--host=".length);
     }
   }
 
@@ -108,7 +132,11 @@ function parsePassphraseArg(argv: string[]): ParsedPassphraseArgs {
     return { error: "Fatal: use either --passphrase or --passphrase-file, not both" };
   }
 
-  return { passphrase, passphraseFile };
+  if (host !== undefined && host.trim().length === 0) {
+    return { error: "Fatal: --host cannot be empty" };
+  }
+
+  return { passphrase, passphraseFile, host };
 }
 
 function stripTrailingNewlines(input: string): string {
@@ -133,13 +161,8 @@ function readPassphraseFile(path: string, deps: ServerDeps): string {
   return passphrase;
 }
 
-function resolvePassphrase(deps: ServerDeps): string {
-  const { passphrase, passphraseFile, error } = parsePassphraseArg(deps.argv);
-  if (error) {
-    deps.error(error);
-    deps.exit(1);
-  }
-
+function resolvePassphrase(parsedArgs: ParsedServerArgs, deps: ServerDeps): string {
+  const { passphrase, passphraseFile } = parsedArgs;
   if (passphrase) {
     return passphrase;
   }
@@ -181,10 +204,38 @@ function resolvePassphrase(deps: ServerDeps): string {
   return prompted;
 }
 
+function resolveHost(parsedArgs: ParsedServerArgs, deps: ServerDeps): string {
+  if (parsedArgs.host) {
+    return parsedArgs.host.trim();
+  }
+
+  const envHost = deps.env.VAULT_HOST;
+  if (envHost !== undefined) {
+    if (envHost.trim().length === 0) {
+      deps.error("Fatal: VAULT_HOST cannot be empty");
+      deps.exit(1);
+    }
+
+    return envHost.trim();
+  }
+
+  return "0.0.0.0";
+}
+
 function parsePort(raw: string | undefined): number {
   if (!raw) return 8420;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 8420;
+}
+
+function formatBindAddress(host: string, port: number): string {
+  const hostWithPort = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+
+  if (host === "0.0.0.0" || host === "::") {
+    return `${hostWithPort}:${port} (all interfaces)`;
+  }
+
+  return `${hostWithPort}:${port}`;
 }
 
 function resolveDefaultDbPath(
@@ -207,23 +258,53 @@ function resolveDefaultDbPath(
 
 export async function startServer(overrides: Partial<ServerDeps> = {}): Promise<Context> {
   const deps = buildServerDeps(overrides);
-  const passphrase = resolvePassphrase(deps);
+  const parsedArgs = parseServerArgs(deps.argv);
+  if (parsedArgs.error) {
+    deps.error(parsedArgs.error);
+    deps.exit(1);
+  }
+
+  const passphrase = resolvePassphrase(parsedArgs, deps);
+  const host = resolveHost(parsedArgs, deps);
 
   const port = parsePort(deps.env.VAULT_PORT);
   const dbPath = deps.env.VAULT_DB_PATH ?? resolveDefaultDbPath(deps.env, deps.platform, deps.homedir());
   deps.mkdirSync(dirname(dbPath), { recursive: true });
 
-  const masterKey = await deps.deriveMasterKey(passphrase);
   const db = deps.initDatabase(dbPath);
+  let masterKey: CryptoKey;
+  let mode: "created" | "opened" | "migrated";
+
+  try {
+    const unlocked = await deps.initializeOrUnlockVault(db, passphrase);
+    masterKey = unlocked.masterKey;
+    mode = unlocked.mode;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Fatal:")) {
+      db.close();
+      deps.error(err.message);
+      deps.exit(1);
+    }
+
+    throw err;
+  }
+
+  if (mode === "created") {
+    const weakPassphraseWarning = deps.getWeakPassphraseWarning(passphrase);
+    if (weakPassphraseWarning) {
+      deps.error(weakPassphraseWarning);
+    }
+  }
 
   const ctx: Context = { db, masterKey };
 
   deps.serve({
+    hostname: host,
     port,
     fetch: (req) => deps.router(req, ctx),
   });
 
-  deps.log(`MaxedVault listening on http://localhost:${port}`);
+  deps.log(`MaxedVault listening on ${formatBindAddress(host, port)}`);
   return ctx;
 }
 
