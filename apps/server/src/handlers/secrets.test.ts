@@ -3,8 +3,8 @@ import { deriveMasterKey } from "../crypto";
 import {
   handleDeleteSecret,
   handleGetSecret,
+  handleGetProjectEnv,
   handleListSecrets,
-  handleListSecretsEnv,
   handleSetSecret,
 } from "./secrets";
 import { FakeDb } from "../test-utils/fake-db";
@@ -45,7 +45,7 @@ describe("secret handlers", () => {
   it("returns project-not-found across all handlers when project is missing", async () => {
     const ctx = createContext();
     const listRes = handleListSecrets("missing", new URL("http://vault.local/?prefix=A"), ctx);
-    const envRes = await handleListSecretsEnv("missing", ctx);
+    const envRes = await handleGetProjectEnv("missing", ctx);
     const getRes = await handleGetSecret("missing", "TOKEN", ctx);
     const setRes = await putSecret(ctx, "missing", "TOKEN", "value");
     const deleteRes = handleDeleteSecret("missing", "TOKEN", ctx);
@@ -88,7 +88,7 @@ describe("secret handlers", () => {
     await putSecret(ctx, "infographics", "TOKEN", "secret-token");
     await putSecret(ctx, "infographics", "WEBHOOK_SECRET", "whs-123");
 
-    const res = await handleListSecretsEnv("infographics", ctx);
+    const res = await handleGetProjectEnv("infographics", ctx);
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({

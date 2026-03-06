@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handleCreateProject, handleListProjects, isValidProjectName } from "./projects";
+import { handleCreateProject, handleGetProject, handleListProjects, isValidProjectName } from "./projects";
 import { FakeDb } from "../test-utils/fake-db";
 
 function createContext() {
@@ -91,5 +91,18 @@ describe("project handlers", () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ projects: ["alpha", "kilo", "zeta"] });
+  });
+
+  it("gets one project by slug", async () => {
+    const ctx = createContext();
+    ctx.db.query("INSERT INTO projects (name) VALUES (?1)").run("infographics");
+
+    const foundRes = handleGetProject("infographics", ctx);
+    const missingRes = handleGetProject("missing", ctx);
+
+    expect(foundRes.status).toBe(200);
+    await expect(foundRes.json()).resolves.toEqual({ name: "infographics" });
+    expect(missingRes.status).toBe(404);
+    await expect(missingRes.json()).resolves.toEqual({ error: "Project not found" });
   });
 });

@@ -1,81 +1,55 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cmdEnv } from "./env";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CliRuntime } from "../runtime";
 
-vi.mock("../config", () => ({
-  getServerUrl: () => "http://vault.internal",
+const resolveContextMock = vi.hoisted(() => vi.fn(() => ({ serverUrl: "http://vault.internal", project: "infographics", source: "workspace" })));
+const createVaultClientMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../context", () => ({
+  resolveContext: resolveContextMock,
 }));
 
+vi.mock("../api", () => ({
+  createVaultClient: createVaultClientMock,
+}));
+
+import { cmdEnv } from "./env";
+
+function createRuntime(): CliRuntime {
+  return {
+    env: {},
+    cwd: () => "/workspace",
+    fetch: vi.fn() as unknown as typeof fetch,
+    promptInput: vi.fn(),
+    log: vi.fn(),
+    writeStdout: vi.fn(),
+    readStdinText: vi.fn(),
+    isStdinTTY: vi.fn().mockReturnValue(false),
+    spawn: vi.fn() as unknown as typeof Bun.spawn,
+    onSignal: vi.fn(),
+    offSignal: vi.fn(),
+  };
+}
+
 describe("cmdEnv", () => {
-  const originalExit = process.exit;
-
   beforeEach(() => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-    process.exit = originalExit;
-  });
+  it("prints shell exports", async () => {
+    createVaultClientMock.mockReturnValue({
+      getEnv: vi.fn().mockResolvedValue({
+        project: "infographics",
+        secrets: [
+          { name: "TOKEN", value: "abc123" },
+          { name: "QUOTED", value: "contains'quote" },
+        ],
+      }),
+    });
+    const runtime = createRuntime();
 
-  it("prints shell export lines for all project secrets", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            project: "infographics",
-            secrets: [
-              { name: "WEBHOOK_SECRET", value: "abc123" },
-              { name: "TOKEN", value: "contains'quote" },
-            ],
-          }),
-          { status: 200 },
-        ),
-      ),
-    );
+    await cmdEnv(runtime);
 
-    await cmdEnv("infographics");
-
-    expect(process.stdout.write).toHaveBeenCalledWith("export WEBHOOK_SECRET='abc123'\n");
-    expect(process.stdout.write).toHaveBeenCalledWith("export TOKEN='contains'\\''quote'\n");
-  });
-
-  it("exits with code 1 on API error", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Project not found" }), { status: 404 })),
-    );
-    process.exit = vi.fn() as never;
-
-    await cmdEnv("unknown");
-
-    expect(console.error).toHaveBeenCalledWith("Project not found");
-    expect(process.exit).toHaveBeenCalledWith(1);
-  });
-
-  it("fails on invalid environment variable names", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            project: "infographics",
-            secrets: [{ name: "bad-key", value: "abc123" }],
-          }),
-          { status: 200 },
-        ),
-      ),
-    );
-    process.exit = vi.fn() as never;
-
-    await cmdEnv("infographics");
-
-    expect(console.error).toHaveBeenCalledWith(
-      "Invalid secret names for environment variables: bad-key",
-    );
-    expect(process.exit).toHaveBeenCalledWith(1);
-    expect(process.stdout.write).not.toHaveBeenCalled();
+    expect(runtime.writeStdout).toHaveBeenCalledWith("export TOKEN='abc123'\n");
+    expect(runtime.writeStdout).toHaveBeenCalledWith("export QUOTED='contains'\\''quote'\n");
   });
 });

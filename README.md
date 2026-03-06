@@ -2,110 +2,91 @@
 
 Bun-native monorepo for a local secrets vault system.
 
-This repository ships a **single unified binary**: `maxedvault`.
+This repository ships a single unified binary: `maxedvault`.
 That binary can run both roles:
 
-- **Server** (long-running process)
-- **Client CLI** (short-lived commands)
-
----
+- Server
+- Client CLI
 
 ## Workspace Layout
 
 - `apps/app` — unified binary entrypoint (`@maxed-vault/app`)
 - `apps/server` — server implementation (`@maxed-vault/server`)
-- `apps/client` — client command implementation (`@maxed-vault/client`)
-- root — workspace config and scripts
+- `apps/client` — client CLI implementation (`@maxed-vault/client`)
 
----
+## How It Works
 
-## How the App Works
+1. Start the server with `maxedvault server`.
+2. Configure the client once with `maxedvault init`.
+3. Bind a workspace to a project with `maxedvault project use <slug>`.
+4. Use `secret`, `env`, and `run` commands without repeating the project each time.
 
-1. Start server via unified binary (`maxedvault server ...`).
-2. Server derives an in-memory master key from a passphrase.
-3. Secret values are encrypted and stored in SQLite.
-4. Client commands call server HTTP endpoints to manage projects/secrets.
-5. Secrets can be exported or injected into child processes (`env` / `run`).
+Secrets are encrypted at rest in SQLite and decrypted only when returned by the local server.
 
-### Encryption model
+## Encryption Model
 
-- KDF: **PBKDF2-SHA256**
-- Iterations: **600,000**
-- Cipher: **AES-256-GCM**
+- KDF: `PBKDF2-SHA256`
+- Iterations: `600000`
+- Cipher: `AES-256-GCM`
 - Per-secret random IV (12 bytes)
-- Stored payload columns: `encrypted_value`, `iv` (base64)
-
-Passphrase role:
-
-- Required at server startup
-- Not persisted by app code
-- Must match previous passphrase to decrypt existing vault data
-
----
+- Stored payload columns: `encrypted_value`, `iv`
 
 ## Local Files
 
 ### Server DB location
 
-Default (when `VAULT_DB_PATH` is unset):
+Default when `VAULT_DB_PATH` is unset:
 
 - macOS: `~/Library/Application Support/maxedvault/vault.db`
 - Linux: `$XDG_DATA_HOME/maxedvault/vault.db` or `~/.local/share/maxedvault/vault.db`
 
-SQLite WAL sidecar files are created next to DB:
+SQLite sidecar files are created next to the DB:
 
 - `vault.db-wal`
 - `vault.db-shm`
 
-### Client config location
+### Client config
 
-- `~/.maxedvault/config.json` (file mode `0600`)
+Global config:
 
----
+- `~/.maxedvault/config.json`
+- shape: `{ "serverUrl": "http://localhost:8420" }`
+
+Workspace config:
+
+- `.maxedvault/config.json`
+- shape: `{ "project": "infographics" }`
+
+Project resolution order for scoped commands:
+
+1. `--project <slug>`
+2. `MAXEDVAULT_PROJECT`
+3. nearest `.maxedvault/config.json` found by walking upward from the current directory
 
 ## Install & Verify
 
 ```bash
 bun install
-bun run test
-# or
 bun run check
 ```
 
----
-
-## Run From Source (Unified App)
+## Run From Source
 
 ```bash
 cd apps/app
 ```
 
-Start server:
+Start the server:
 
 ```bash
 bun run src/index.ts server
-# equivalent forms:
 bun run src/index.ts server start
 bun run src/index.ts server run
 ```
 
-Passphrase examples:
+Configure the client:
 
 ```bash
-# direct passphrase
-bun run src/index.ts server --passphrase "your-strong-passphrase"
-
-# passphrase file
-bun run src/index.ts server --passphrase-file /absolute/path/passphrase.txt
-```
-
-Initialize client config:
-
-```bash
-# prompt mode (recommended)
-bun run src/index.ts init
-
-# explicit URL
 bun run src/index.ts init --server http://localhost:8420
 ```
 
@@ -113,25 +94,24 @@ Typical flow:
 
 ```bash
 bun run src/index.ts project create infographics
-echo "super-secret" | bun run src/index.ts set WEBHOOK_SECRET --project infographics
-bun run src/index.ts get WEBHOOK_SECRET --project infographics
-bun run src/index.ts env --project infographics
-bun run src/index.ts run --project infographics -- npm start
+bun run src/index.ts project use infographics
+echo "super-secret" | bun run src/index.ts secret set WEBHOOK_SECRET
+bun run src/index.ts secret get WEBHOOK_SECRET
+bun run src/index.ts env
+bun run src/index.ts run -- node app.js
 bun run src/index.ts status
 ```
 
----
-
-## Complete Command + Flag Reference
+## CLI Reference
 
 Binary: `maxedvault`
-
-> When running from source, replace `maxedvault` with `bun run src/index.ts` from `apps/app`.
 
 ### Global help
 
 - `maxedvault help`
 - `maxedvault help server`
+- `maxedvault help project`
+- `maxedvault help secret`
 - `maxedvault --help`
 - `maxedvault -h`
 
@@ -148,25 +128,38 @@ Server flags:
 - `--passphrase-file <path>`
 - `--passphrase-file=<path>`
 
-Rules:
+Passphrase precedence:
 
-- Use **either** passphrase flag **or** passphrase-file flag, not both.
-- If no passphrase source is provided, interactive prompt is used.
+1. CLI flags
+2. `VAULT_PASSPHRASE` or `VAULT_PASSPHRASE_FILE`
+3. interactive prompt
 
 ### Client commands
 
-| Command | Flags/options | Description |
-|---|---|---|
-| `init` | optional: `--server <url-or-host>` | Save server URL in local config |
-| `status` | none | Print configured server and health status |
-| `project create <slug>` | none | Create project |
-| `project ls` | none | List projects |
-| `set <name>` | required: `--project <slug>` | Create/update secret |
-| `get <name>` | required: `--project <slug>` | Print one secret value |
-| `ls [prefix]` | required: `--project <slug>` | List secret names (optional prefix) |
-| `rm <name>` | required: `--project <slug>` | Delete secret |
-| `env` | required: `--project <slug>` | Print shell exports for all project secrets |
-| `run --project <slug> -- <command> [args...]` | required: `--project <slug>` and `--` separator | Run command with project secrets injected into env |
+#### Setup and status
+
+- `maxedvault init [--server <url>]`
+- `maxedvault status`
+
+#### Project commands
+
+- `maxedvault project create <slug>`
+- `maxedvault project list`
+- `maxedvault project use <slug>`
+- `maxedvault project current`
+- `maxedvault project clear`
+
+#### Secret commands
+
+- `maxedvault secret set <name> [--project <slug>]`
+- `maxedvault secret get <name> [--project <slug>]`
+- `maxedvault secret list [prefix] [--project <slug>]`
+- `maxedvault secret remove <name> [--project <slug>]`
+
+#### Env and run
+
+- `maxedvault env [--project <slug>]`
+- `maxedvault run [--project <slug>] -- <command> [args...]`
 
 Validation rules:
 
@@ -175,110 +168,80 @@ Validation rules:
 
 ### `init` URL resolution behavior
 
-`maxedvault init` (or `init --server ...`) accepts:
+`maxedvault init` accepts:
 
-- full URL (`http://...` / `https://...`) → saved as given (normalized)
-- host/IP without scheme (`localhost:8420`, `127.0.0.1:8420`, etc.) →
+- full URL (`http://...` or `https://...`) and stores it directly
+- host or host:port without scheme:
   - tries `https://<input>/health`
   - then tries `http://<input>/health`
-  - saves the first reachable one
-  - errors if neither is reachable
+  - stores the first reachable server
 
----
+## Loading Secrets Into Processes
 
-## Passphrase Sources (Server)
-
-Supported sources, in precedence order:
-
-1. CLI flags:
-   - `--passphrase ...`
-   - `--passphrase-file ...`
-2. Environment variables:
-   - `VAULT_PASSPHRASE`
-   - `VAULT_PASSPHRASE_FILE`
-3. Interactive prompt
-
-Notes:
-
-- `--passphrase` and `--passphrase-file` are mutually exclusive.
-- `VAULT_PASSPHRASE` and `VAULT_PASSPHRASE_FILE` are mutually exclusive.
-- Passphrase file content has trailing newlines stripped.
-
----
-
-## Output Streams
-
-- Normal/success output is written to **stdout**.
-- Errors are written to **stderr**.
-
-This includes command confirmations like create/update/delete/configured.
-
----
-
-## Load Secrets Into Processes
-
-Single secret:
+Bind the workspace once:
 
 ```bash
-export WEBHOOK_SECRET="$(maxedvault get WEBHOOK_SECRET --project infographics)"
+maxedvault project use infographics
 ```
 
-All secrets in current shell:
+Print one secret:
 
 ```bash
-eval "$(maxedvault env --project infographics)"
+maxedvault secret get WEBHOOK_SECRET
 ```
 
-All secrets for one child process:
+Export all secrets into the current shell:
 
 ```bash
-maxedvault run --project infographics -- npm start
+eval "$(maxedvault env)"
 ```
 
----
+Run one process with injected secrets:
+
+```bash
+maxedvault run -- node app.js
+```
+
+Override project selection explicitly:
+
+```bash
+maxedvault run --project infographics -- bun run dev
+```
 
 ## Server Environment Variables
 
 - `VAULT_PORT` (default `8420`)
-- `VAULT_DB_PATH` (override SQLite DB path)
-- `XDG_DATA_HOME` (Linux DB base path when `VAULT_DB_PATH` is unset)
+- `VAULT_DB_PATH`
+- `XDG_DATA_HOME`
 - `VAULT_PASSPHRASE`
 - `VAULT_PASSPHRASE_FILE`
 
----
-
 ## HTTP API
 
-Base URL = configured server URL (example: `http://localhost:8420`)
+Base URL = configured server URL, for example `http://localhost:8420`
 
 - `GET /health`
 - `POST /projects`
 - `GET /projects`
+- `GET /projects/:project`
 - `GET /projects/:project/secrets?prefix=<prefix>`
 - `GET /projects/:project/secrets/:name`
 - `PUT /projects/:project/secrets/:name`
 - `DELETE /projects/:project/secrets/:name`
-- `GET /projects/:project/secrets-env`
+- `GET /projects/:project/env`
 
 Bodies:
 
 - `POST /projects`: `{ "name": "<slug>" }`
 - `PUT /projects/:project/secrets/:name`: `{ "value": "<secret>" }`
 
----
-
 ## Build (Single Binary)
 
 From repo root:
 
 ```bash
-# local platform
 bun run build:bin
-
-# local platform, production-oriented
 bun run build:bin:prod
-
-# cross-target
 bun run build:bin:linux-x64
 bun run build:bin:darwin-arm64
 ```
@@ -289,7 +252,7 @@ Outputs:
 - `apps/app/dist/maxedvault-linux-x64`
 - `apps/app/dist/maxedvault-darwin-arm64`
 
-Run compiled binary:
+Run the compiled binary:
 
 ```bash
 ./apps/app/dist/maxedvault help
@@ -297,11 +260,9 @@ Run compiled binary:
 ./apps/app/dist/maxedvault init
 ```
 
----
-
 ## Repository Scripts
 
-### Root scripts
+### Root
 
 - `bun run test`
 - `bun run check`
@@ -310,7 +271,7 @@ Run compiled binary:
 - `bun run build:bin:linux-x64`
 - `bun run build:bin:darwin-arm64`
 
-### `apps/app` scripts
+### apps/app
 
 - `bun run dev`
 - `bun run build:bin`
@@ -321,7 +282,7 @@ Run compiled binary:
 - `bun run test:watch`
 - `bun run check`
 
-### `apps/server` scripts
+### apps/server
 
 - `bun run dev`
 - `bun run start`
@@ -329,18 +290,9 @@ Run compiled binary:
 - `bun run test:watch`
 - `bun run check`
 
-### `apps/client` scripts
+### apps/client
 
 - `bun run dev`
 - `bun run test`
 - `bun run test:watch`
 - `bun run check`
-
----
-
-## Security Notes
-
-- Avoid exposing passphrases in shell history on shared systems.
-- Prefer interactive passphrase input where possible.
-- Keep DB/config files protected by OS permissions.
-- Server currently has no auth boundary beyond deployment/network setup; run in trusted environments.

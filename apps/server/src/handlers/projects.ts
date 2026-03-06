@@ -27,6 +27,18 @@ export async function handleCreateProject(req: Request, ctx: Context): Promise<R
   return json({ name, created: true }, 201);
 }
 
+export function handleGetProject(name: string, ctx: Context): Response {
+  const row = ctx.db.query("SELECT name FROM projects WHERE name = ?1").get(name) as
+    | { name: string }
+    | null;
+
+  if (!row) {
+    return json({ error: "Project not found" }, 404);
+  }
+
+  return json({ name: row.name });
+}
+
 export function handleListProjects(ctx: Context): Response {
   const rows = ctx.db.query("SELECT name FROM projects ORDER BY name").all() as { name: string }[];
   return json({ projects: rows.map((row) => row.name) });

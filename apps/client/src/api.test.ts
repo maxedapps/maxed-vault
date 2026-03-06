@@ -1,26 +1,32 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { vaultFetch } from "./api";
+import { describe, expect, it, vi } from "vitest";
+import { createVaultClient } from "./api";
+import { CliError } from "./errors";
 
-vi.mock("./config", () => ({
-  getServerUrl: () => "http://vault.internal",
-}));
+describe("createVaultClient", () => {
+  it("requests project env from the new /env endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ project: "infographics", secrets: [] }), { status: 200 }),
+    );
+    const client = createVaultClient({
+      serverUrl: "http://vault.internal",
+      fetchImpl: fetchMock,
+    });
 
-describe("vaultFetch", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
+    const result = await client.getEnv("infographics");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://vault.internal/projects/infographics/env", undefined);
+    expect(result).toEqual({ project: "infographics", secrets: [] });
   });
 
-  it("calls fetch with the configured base URL", async () => {
-    const response = new Response(JSON.stringify({ ok: true }), { status: 200 });
-    const fetchMock = vi.fn().mockResolvedValue(response);
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await vaultFetch("/secrets/demo", { method: "GET" });
-
-    expect(fetchMock).toHaveBeenCalledWith("http://vault.internal/secrets/demo", {
-      method: "GET",
+  it("maps API errors to CliError", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "Project not found" }), { status: 404 }),
+    );
+    const client = createVaultClient({
+      serverUrl: "http://vault.internal",
+      fetchImpl: fetchMock,
     });
-    expect(result).toBe(response);
+
+    await expect(client.getProject("missing")).rejects.toThrowError(new CliError("Project not found"));
   });
 });

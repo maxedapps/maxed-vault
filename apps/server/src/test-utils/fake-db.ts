@@ -42,6 +42,12 @@ export class FakeDb {
       return row ? { id: row.id } : null;
     }
 
+    if (sql === "SELECT name FROM projects WHERE name = ?1") {
+      const name = String(args[0]);
+      const row = this.projects.find((project) => project.name === name);
+      return row ? { name: row.name } : null;
+    }
+
     if (
       sql === "SELECT encrypted_value, iv, updated_at FROM secrets WHERE project_id = ?1 AND name = ?2"
     ) {

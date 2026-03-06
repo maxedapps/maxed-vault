@@ -18,6 +18,21 @@ describe("router", () => {
     await expect(res.json()).resolves.toEqual({ error: "Missing secret name" });
   });
 
+  it("routes project lookup requests", async () => {
+    const req = new Request("http://vault.local/projects/infographics", { method: "GET" });
+    const res = await router(req, {
+      db: {
+        query: () => ({
+          get: () => ({ name: "infographics" }),
+        }),
+      },
+      masterKey: {} as CryptoKey,
+    } as never);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ name: "infographics" });
+  });
+
   it("returns 400 for invalid project slug", async () => {
     const req = new Request("http://vault.local/projects/Infographics/secrets", { method: "GET" });
     const res = await router(req, {} as never);

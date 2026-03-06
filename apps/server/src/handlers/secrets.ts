@@ -25,7 +25,7 @@ export function handleListSecrets(project: string, url: URL, ctx: Context): Resp
   return json({ project, names: rows.map((r) => r.name) });
 }
 
-export async function handleListSecretsEnv(project: string, ctx: Context): Promise<Response> {
+export async function handleGetProjectEnv(project: string, ctx: Context): Promise<Response> {
   const projectId = getProjectId(project, ctx);
   if (!projectId) {
     return json({ error: "Project not found" }, 404);

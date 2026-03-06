@@ -1,4 +1,5 @@
 import { runCliEntrypoint } from "../../client/src/index.ts";
+import { CLIENT_COMMAND_SUMMARY_LINES } from "../../client/src/help.ts";
 import { runServerEntrypoint } from "../../server/src/index.ts";
 
 const HELP_TOKENS = new Set(["help", "--help", "-h"]);
@@ -39,7 +40,7 @@ function fullHelpMessage(): string {
     "MaxedVault — unified server + client CLI",
     "",
     "Usage:",
-    "  maxedvault help [server]",
+    "  maxedvault help [server|project|secret|env|run]",
     "  maxedvault --help",
     "  maxedvault -h",
     "",
@@ -47,16 +48,7 @@ function fullHelpMessage(): string {
     "  maxedvault server [start|run] [--passphrase <value>|--passphrase=<value>|--passphrase-file <path>|--passphrase-file=<path>]",
     "",
     "Client commands:",
-    "  maxedvault init [--server <url>]",
-    "  maxedvault status",
-    "  maxedvault project create <slug>",
-    "  maxedvault project ls",
-    "  maxedvault set <name> --project <slug>",
-    "  maxedvault get <name> --project <slug>",
-    "  maxedvault ls [prefix] --project <slug>",
-    "  maxedvault rm <name> --project <slug>",
-    "  maxedvault env --project <slug>",
-    "  maxedvault run --project <slug> -- <command> [args...]",
+    ...CLIENT_COMMAND_SUMMARY_LINES,
   ].join("\n");
 }
 
@@ -95,9 +87,9 @@ function printHelp(topic: HelpTopic, deps: AppDeps): void {
 function usageMessage(): string {
   return [
     "Usage:",
-    "  maxedvault help [server]",
+    "  maxedvault help [server|project|secret|env|run]",
     "  maxedvault server [start|run] [--passphrase <value>|--passphrase=<value>|--passphrase-file <path>|--passphrase-file=<path>]",
-    "  maxedvault <init|get|set|ls|rm|status|project|env|run> ...",
+    "  maxedvault <init|status|project|secret|env|run> ...",
     "",
     "Run 'maxedvault help' for the full command reference.",
   ].join("\n");

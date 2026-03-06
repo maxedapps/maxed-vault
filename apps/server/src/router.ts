@@ -2,12 +2,13 @@ import { json } from "./response";
 import { handleHealth } from "./handlers/health";
 import {
   handleCreateProject,
+  handleGetProject,
   handleListProjects,
   isValidProjectName,
 } from "./handlers/projects";
 import {
+  handleGetProjectEnv,
   handleListSecrets,
-  handleListSecretsEnv,
   handleGetSecret,
   handleSetSecret,
   handleDeleteSecret,
@@ -50,8 +51,12 @@ export async function router(req: Request, ctx: Context): Promise<Response> {
         return handleListSecrets(project, url, ctx);
       }
 
-      if (method === "GET" && suffix === "secrets-env") {
-        return handleListSecretsEnv(project, ctx);
+      if (method === "GET" && suffix === "") {
+        return handleGetProject(project, ctx);
+      }
+
+      if (method === "GET" && suffix === "env") {
+        return handleGetProjectEnv(project, ctx);
       }
 
       if (suffix.startsWith("secrets/")) {
