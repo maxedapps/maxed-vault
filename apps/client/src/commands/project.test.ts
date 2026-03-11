@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliRuntime } from "../runtime";
 
 const requireServerUrlMock = vi.hoisted(() => vi.fn(() => "http://vault.internal"));
-const saveWorkspaceConfigMock = vi.hoisted(() => vi.fn().mockResolvedValue("/workspace/.maxedvault/config.json"));
+const saveWorkspaceConfigMock = vi.hoisted(() => vi.fn().mockResolvedValue("/workspace/.maxedvault/project.json"));
 const clearWorkspaceConfigMock = vi.hoisted(() => vi.fn());
 const maybeResolveProjectMock = vi.hoisted(() => vi.fn());
 const createVaultClientMock = vi.hoisted(() => vi.fn());
@@ -73,21 +73,21 @@ describe("project commands", () => {
 
     expect(saveWorkspaceConfigMock).toHaveBeenCalledWith("infographics", "/workspace");
     expect(runtime.log).toHaveBeenCalledWith(
-      "Bound project infographics in /workspace/.maxedvault/config.json",
+      "Bound project infographics in /workspace/.maxedvault/project.json",
     );
   });
 
   it("prints and clears current project state", () => {
     const runtime = createRuntime();
     maybeResolveProjectMock.mockReturnValue({ project: "infographics", source: "workspace" });
-    clearWorkspaceConfigMock.mockReturnValue("/workspace/.maxedvault/config.json");
+    clearWorkspaceConfigMock.mockReturnValue("/workspace/.maxedvault/project.json");
 
     cmdProjectCurrent(runtime);
     cmdProjectClear(runtime);
 
     expect(runtime.log).toHaveBeenCalledWith("infographics");
     expect(runtime.log).toHaveBeenCalledWith(
-      "Cleared workspace project binding at /workspace/.maxedvault/config.json",
+      "Cleared workspace project binding at /workspace/.maxedvault/project.json",
     );
   });
 });

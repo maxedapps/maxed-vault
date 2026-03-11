@@ -54,7 +54,7 @@ export function clientHelpMessage(topic: ClientHelpTopic = "all"): string {
         "Project resolution order:",
         "  1. --project",
         "  2. MAXEDVAULT_PROJECT",
-        "  3. nearest .maxedvault/config.json",
+        "  3. nearest .maxedvault/project.json",
       ].join("\n");
     case "env":
       return [
@@ -89,7 +89,7 @@ export function clientHelpMessage(topic: ClientHelpTopic = "all"): string {
         "Project resolution order:",
         "  1. --project",
         "  2. MAXEDVAULT_PROJECT",
-        "  3. nearest .maxedvault/config.json",
+        "  3. nearest .maxedvault/project.json",
       ].join("\n");
   }
 }

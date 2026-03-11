@@ -42,13 +42,37 @@ describe("config", () => {
     const rootDir = createTempDir();
     tempDirs.push(rootDir);
     mkdirSync(join(rootDir, ".maxedvault"), { recursive: true });
+    writeFileSync(join(rootDir, ".maxedvault", "project.json"), JSON.stringify({ project: "alpha" }));
+    mkdirSync(join(rootDir, "src", "nested"), { recursive: true });
+
+    expect(findWorkspaceConfig(join(rootDir, "src", "nested"))).toMatchObject({
+      rootDir,
+      path: join(rootDir, ".maxedvault", "project.json"),
+      config: { project: "alpha" },
+    });
+  });
+
+  it("supports legacy workspace config files", () => {
+    const rootDir = createTempDir();
+    tempDirs.push(rootDir);
+    mkdirSync(join(rootDir, ".maxedvault"), { recursive: true });
     writeFileSync(join(rootDir, ".maxedvault", "config.json"), JSON.stringify({ project: "alpha" }));
     mkdirSync(join(rootDir, "src", "nested"), { recursive: true });
 
     expect(findWorkspaceConfig(join(rootDir, "src", "nested"))).toMatchObject({
       rootDir,
+      path: join(rootDir, ".maxedvault", "config.json"),
       config: { project: "alpha" },
     });
+  });
+
+  it("ignores global config while searching for workspace config", async () => {
+    const homeDir = createTempDir();
+    tempDirs.push(homeDir);
+
+    await saveGlobalConfig("http://vault.internal", homeDir);
+
+    expect(findWorkspaceConfig(homeDir, homeDir)).toBeNull();
   });
 
   it("prefers nearest package root when choosing where to write workspace config", async () => {
@@ -59,7 +83,7 @@ describe("config", () => {
 
     const configPath = await saveWorkspaceConfig("alpha", join(rootDir, "src", "feature"));
 
-    expect(configPath).toBe(join(rootDir, ".maxedvault", "config.json"));
+    expect(configPath).toBe(join(rootDir, ".maxedvault", "project.json"));
     expect(resolveWorkspaceRoot(join(rootDir, "src", "feature"))).toBe(rootDir);
   });
 

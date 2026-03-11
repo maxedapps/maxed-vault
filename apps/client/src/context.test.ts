@@ -23,7 +23,7 @@ describe("context resolution", () => {
     const workspaceDir = createTempDir();
     tempDirs.push(workspaceDir);
     mkdirSync(join(workspaceDir, ".maxedvault"), { recursive: true });
-    writeFileSync(join(workspaceDir, ".maxedvault", "config.json"), JSON.stringify({ project: "workspace" }));
+    writeFileSync(join(workspaceDir, ".maxedvault", "project.json"), JSON.stringify({ project: "workspace" }));
 
     expect(
       maybeResolveProject({
@@ -51,7 +51,7 @@ describe("context resolution", () => {
     const homeDir = createTempDir();
     tempDirs.push(workspaceDir, homeDir);
     mkdirSync(join(workspaceDir, ".maxedvault"), { recursive: true });
-    writeFileSync(join(workspaceDir, ".maxedvault", "config.json"), JSON.stringify({ project: "workspace" }));
+    writeFileSync(join(workspaceDir, ".maxedvault", "project.json"), JSON.stringify({ project: "workspace" }));
     await saveGlobalConfig("http://vault.internal", homeDir);
 
     expect(resolveContext({ env: {}, cwd: workspaceDir, homeDir })).toEqual({

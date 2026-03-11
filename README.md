@@ -56,14 +56,15 @@ Global config:
 
 Workspace config:
 
-- `.maxedvault/config.json`
+- `.maxedvault/project.json`
 - shape: `{ "project": "infographics" }`
+- legacy `.maxedvault/config.json` is still read for backward compatibility
 
 Project resolution order for scoped commands:
 
 1. `--project <slug>`
 2. `MAXEDVAULT_PROJECT`
-3. nearest `.maxedvault/config.json` found by walking upward from the current directory
+3. nearest `.maxedvault/project.json` found by walking upward from the current directory
 
 ## Install & Verify
 

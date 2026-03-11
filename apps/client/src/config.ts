@@ -6,8 +6,10 @@ import { CliError } from "./errors";
 import { assertValidProjectName } from "./validation";
 
 const GLOBAL_CONFIG_DIRNAME = ".maxedvault";
-const CONFIG_FILENAME = "config.json";
+const GLOBAL_CONFIG_FILENAME = "config.json";
 const WORKSPACE_CONFIG_DIRNAME = ".maxedvault";
+const WORKSPACE_CONFIG_FILENAME = "project.json";
+const LEGACY_WORKSPACE_CONFIG_FILENAME = "config.json";
 
 export interface GlobalConfig {
   serverUrl: string;
@@ -47,7 +49,7 @@ export function normalizeServerUrl(serverUrl: string): string {
 }
 
 export function getGlobalConfigPath(homeDir = homedir()): string {
-  return join(homeDir, GLOBAL_CONFIG_DIRNAME, CONFIG_FILENAME);
+  return join(homeDir, GLOBAL_CONFIG_DIRNAME, GLOBAL_CONFIG_FILENAME);
 }
 
 export function loadGlobalConfig(homeDir = homedir()): GlobalConfig | null {
@@ -74,7 +76,11 @@ export function requireServerUrl(homeDir = homedir()): string {
 }
 
 export function getWorkspaceConfigPath(rootDir: string): string {
-  return join(rootDir, WORKSPACE_CONFIG_DIRNAME, CONFIG_FILENAME);
+  return join(rootDir, WORKSPACE_CONFIG_DIRNAME, WORKSPACE_CONFIG_FILENAME);
+}
+
+function getLegacyWorkspaceConfigPath(rootDir: string): string {
+  return join(rootDir, WORKSPACE_CONFIG_DIRNAME, LEGACY_WORKSPACE_CONFIG_FILENAME);
 }
 
 function parseWorkspaceConfig(path: string): WorkspaceConfig | null {
@@ -86,17 +92,30 @@ function parseWorkspaceConfig(path: string): WorkspaceConfig | null {
   return { project: assertValidProjectName(config.project) };
 }
 
-export function findWorkspaceConfig(startDir = process.cwd()): ResolvedWorkspaceConfig | null {
+export function findWorkspaceConfig(
+  startDir = process.cwd(),
+  homeDir = homedir(),
+): ResolvedWorkspaceConfig | null {
   let currentDir = resolve(startDir);
+  const globalConfigPath = resolve(getGlobalConfigPath(homeDir));
 
   while (true) {
-    const configPath = getWorkspaceConfigPath(currentDir);
-    if (existsSync(configPath)) {
-      const config = parseWorkspaceConfig(configPath);
+    const workspaceConfigPath = getWorkspaceConfigPath(currentDir);
+    if (existsSync(workspaceConfigPath)) {
+      const config = parseWorkspaceConfig(workspaceConfigPath);
       if (!config) {
-        throw new CliError(`Invalid workspace config: ${configPath}`);
+        throw new CliError(`Invalid workspace config: ${workspaceConfigPath}`);
       }
-      return { rootDir: currentDir, path: configPath, config };
+      return { rootDir: currentDir, path: workspaceConfigPath, config };
+    }
+
+    const legacyWorkspaceConfigPath = getLegacyWorkspaceConfigPath(currentDir);
+    if (resolve(legacyWorkspaceConfigPath) !== globalConfigPath && existsSync(legacyWorkspaceConfigPath)) {
+      const config = parseWorkspaceConfig(legacyWorkspaceConfigPath);
+      if (!config) {
+        throw new CliError(`Invalid workspace config: ${legacyWorkspaceConfigPath}`);
+      }
+      return { rootDir: currentDir, path: legacyWorkspaceConfigPath, config };
     }
 
     const parentDir = dirname(currentDir);
