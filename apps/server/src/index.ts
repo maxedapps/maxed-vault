@@ -273,7 +273,7 @@ export async function startServer(overrides: Partial<ServerDeps> = {}): Promise<
 
   const db = deps.initDatabase(dbPath);
   let masterKey: CryptoKey;
-  let mode: "created" | "opened" | "migrated";
+  let mode: "created" | "opened";
 
   try {
     const unlocked = await deps.initializeOrUnlockVault(db, passphrase);

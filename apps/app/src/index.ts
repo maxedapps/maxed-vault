@@ -3,7 +3,6 @@ import { CLIENT_COMMAND_SUMMARY_LINES } from "../../client/src/help.ts";
 import { runServerEntrypoint } from "../../server/src/index.ts";
 
 const HELP_TOKENS = new Set(["help", "--help", "-h"]);
-const SERVER_START_ALIASES = new Set(["start", "run"]);
 
 type HelpTopic = "all" | "server";
 
@@ -45,7 +44,7 @@ function fullHelpMessage(): string {
     "  maxedvault -h",
     "",
     "Server commands:",
-    "  maxedvault server [start|run] [--host <value>|--host=<value>] [--passphrase <value>|--passphrase=<value>|--passphrase-file <path>|--passphrase-file=<path>]",
+    "  maxedvault server [start] [--host <value>|--host=<value>] [--passphrase <value>|--passphrase=<value>|--passphrase-file <path>|--passphrase-file=<path>]",
     "",
     "Client commands:",
     ...CLIENT_COMMAND_SUMMARY_LINES,
@@ -57,7 +56,7 @@ function serverHelpMessage(): string {
     "MaxedVault server help",
     "",
     "Usage:",
-    "  maxedvault server [start|run] [--host <value>|--host=<value>] [--passphrase <value>|--passphrase=<value>|--passphrase-file <path>|--passphrase-file=<path>]",
+    "  maxedvault server [start] [--host <value>|--host=<value>] [--passphrase <value>|--passphrase=<value>|--passphrase-file <path>|--passphrase-file=<path>]",
     "",
     "Options:",
     "  --host <value>",
@@ -74,7 +73,6 @@ function serverHelpMessage(): string {
     "",
     "Notes:",
     "  - 'server' without a subcommand starts the server.",
-    "  - 'run' is an alias for 'start' under the 'server' command.",
     "  - If no passphrase source is provided, an interactive prompt is shown.",
     "  - New vaults store a verifier so wrong passphrases fail fast on startup.",
     "  - A weak passphrase warning is shown when a new vault is created.",
@@ -93,7 +91,7 @@ function usageMessage(): string {
   return [
     "Usage:",
     "  maxedvault help [server|project|secret|env|run]",
-    "  maxedvault server [start|run] [--host <value>|--host=<value>] [--passphrase <value>|--passphrase=<value>|--passphrase-file <path>|--passphrase-file=<path>]",
+    "  maxedvault server [start] [--host <value>|--host=<value>] [--passphrase <value>|--passphrase=<value>|--passphrase-file <path>|--passphrase-file=<path>]",
     "  maxedvault <init|status|project|secret|env|run> ...",
     "",
     "Run 'maxedvault help' for the full command reference.",
@@ -134,7 +132,7 @@ export async function runApp(rawArgs: string[], overrides: Partial<AppDeps> = {}
       return;
     }
 
-    if (SERVER_START_ALIASES.has(serverSubcommand)) {
+    if (serverSubcommand === "start") {
       const [, ...serverArgs] = rest;
 
       if (isHelpToken(serverArgs[0])) {

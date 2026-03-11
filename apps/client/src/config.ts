@@ -9,7 +9,6 @@ const GLOBAL_CONFIG_DIRNAME = ".maxedvault";
 const GLOBAL_CONFIG_FILENAME = "config.json";
 const WORKSPACE_CONFIG_DIRNAME = ".maxedvault";
 const WORKSPACE_CONFIG_FILENAME = "project.json";
-const LEGACY_WORKSPACE_CONFIG_FILENAME = "config.json";
 
 export interface GlobalConfig {
   serverUrl: string;
@@ -79,10 +78,6 @@ export function getWorkspaceConfigPath(rootDir: string): string {
   return join(rootDir, WORKSPACE_CONFIG_DIRNAME, WORKSPACE_CONFIG_FILENAME);
 }
 
-function getLegacyWorkspaceConfigPath(rootDir: string): string {
-  return join(rootDir, WORKSPACE_CONFIG_DIRNAME, LEGACY_WORKSPACE_CONFIG_FILENAME);
-}
-
 function parseWorkspaceConfig(path: string): WorkspaceConfig | null {
   const config = parseJsonFile<{ project?: unknown }>(path);
   if (!config || typeof config.project !== "string" || config.project.trim().length === 0) {
@@ -92,12 +87,8 @@ function parseWorkspaceConfig(path: string): WorkspaceConfig | null {
   return { project: assertValidProjectName(config.project) };
 }
 
-export function findWorkspaceConfig(
-  startDir = process.cwd(),
-  homeDir = homedir(),
-): ResolvedWorkspaceConfig | null {
+export function findWorkspaceConfig(startDir = process.cwd()): ResolvedWorkspaceConfig | null {
   let currentDir = resolve(startDir);
-  const globalConfigPath = resolve(getGlobalConfigPath(homeDir));
 
   while (true) {
     const workspaceConfigPath = getWorkspaceConfigPath(currentDir);
@@ -107,15 +98,6 @@ export function findWorkspaceConfig(
         throw new CliError(`Invalid workspace config: ${workspaceConfigPath}`);
       }
       return { rootDir: currentDir, path: workspaceConfigPath, config };
-    }
-
-    const legacyWorkspaceConfigPath = getLegacyWorkspaceConfigPath(currentDir);
-    if (resolve(legacyWorkspaceConfigPath) !== globalConfigPath && existsSync(legacyWorkspaceConfigPath)) {
-      const config = parseWorkspaceConfig(legacyWorkspaceConfigPath);
-      if (!config) {
-        throw new CliError(`Invalid workspace config: ${legacyWorkspaceConfigPath}`);
-      }
-      return { rootDir: currentDir, path: legacyWorkspaceConfigPath, config };
     }
 
     const parentDir = dirname(currentDir);

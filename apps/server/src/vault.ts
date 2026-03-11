@@ -1,11 +1,5 @@
 import type { Database } from "bun:sqlite";
-import {
-  decryptSecret,
-  deriveLegacyMasterKey,
-  deriveMasterKey,
-  encryptSecret,
-  generateSalt,
-} from "./crypto";
+import { decryptSecret, deriveMasterKey, encryptSecret, generateSalt } from "./crypto";
 
 const VAULT_CHECK_VALUE = "maxedvault:v1";
 
@@ -23,7 +17,7 @@ interface SecretRow {
 
 export interface OpenVaultResult {
   masterKey: CryptoKey;
-  mode: "created" | "opened" | "migrated";
+  mode: "created" | "opened";
 }
 
 function getVaultMetadata(db: Database): VaultMetaRow | null {
@@ -89,61 +83,6 @@ async function assertPassphraseMatchesMetadata(
   }
 }
 
-async function migrateLegacyVault(db: Database, passphrase: string): Promise<OpenVaultResult> {
-  const legacyKey = await deriveLegacyMasterKey(passphrase);
-  const legacySecrets = listEncryptedSecrets(db);
-
-  try {
-    for (const row of legacySecrets) {
-      await decryptSecret(row.encrypted_value, row.iv, legacyKey);
-    }
-  } catch {
-    throw new Error("Fatal: passphrase did not match this vault");
-  }
-
-  const nextMetadata = await createVaultMetadata(passphrase);
-  const migratedSecrets = await Promise.all(
-    legacySecrets.map(async (row) => {
-      const plaintext = await decryptSecret(row.encrypted_value, row.iv, legacyKey);
-      const encrypted = await encryptSecret(plaintext, nextMetadata.masterKey);
-
-      return {
-        id: row.id,
-        encryptedValue: encrypted.encrypted,
-        iv: encrypted.iv,
-      };
-    }),
-  );
-
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    insertVaultMetadata(
-      db,
-      nextMetadata.salt,
-      nextMetadata.checkCiphertext,
-      nextMetadata.checkIv,
-    );
-
-    const updateSecret = db.query(
-      "UPDATE secrets SET encrypted_value = ?1, iv = ?2 WHERE id = ?3",
-    );
-
-    for (const row of migratedSecrets) {
-      updateSecret.run(row.encryptedValue, row.iv, row.id);
-    }
-
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
-
-  return {
-    masterKey: nextMetadata.masterKey,
-    mode: "migrated",
-  };
-}
-
 export async function initializeOrUnlockVault(
   db: Database,
   passphrase: string,
@@ -154,9 +93,11 @@ export async function initializeOrUnlockVault(
     return { masterKey, mode: "opened" };
   }
 
-  const legacySecrets = listEncryptedSecrets(db);
-  if (legacySecrets.length > 0) {
-    return migrateLegacyVault(db, passphrase);
+  const existingSecrets = listEncryptedSecrets(db);
+  if (existingSecrets.length > 0) {
+    throw new Error(
+      "Fatal: vault metadata is missing while secrets exist. Legacy vault migration is no longer supported.",
+    );
   }
 
   const metadataForNewVault = await createVaultMetadata(passphrase);

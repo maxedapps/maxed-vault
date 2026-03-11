@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  decryptSecret,
-  deriveLegacyMasterKey,
-  deriveMasterKey,
-  encryptSecret,
-  generateSalt,
-} from "./crypto";
+import { decryptSecret, deriveMasterKey, encryptSecret, generateSalt } from "./crypto";
 
 describe("crypto", () => {
   it("encrypts and decrypts round-trip", async () => {
@@ -34,15 +28,5 @@ describe("crypto", () => {
     const encrypted = await encryptSecret("salted-secret", keyA);
 
     await expect(decryptSecret(encrypted.encrypted, encrypted.iv, keyB)).rejects.toThrow();
-  });
-
-  it("preserves legacy derivation for migration", async () => {
-    const legacyA = await deriveLegacyMasterKey("legacy-passphrase");
-    const legacyB = await deriveLegacyMasterKey("legacy-passphrase");
-    const encrypted = await encryptSecret("legacy-secret", legacyA);
-
-    await expect(decryptSecret(encrypted.encrypted, encrypted.iv, legacyB)).resolves.toBe(
-      "legacy-secret",
-    );
   });
 });

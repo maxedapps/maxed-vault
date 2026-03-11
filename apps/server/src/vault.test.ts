@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { decryptSecret, deriveLegacyMasterKey, encryptSecret } from "./crypto";
 import { FakeDb } from "./test-utils/fake-db";
 import { initializeOrUnlockVault } from "./vault";
 
@@ -31,45 +30,14 @@ describe("initializeOrUnlockVault", () => {
     );
   });
 
-  it("migrates legacy vault secrets to per-vault metadata", async () => {
+  it("fails when secrets exist without vault metadata", async () => {
     const db = new FakeDb();
     db.query("INSERT INTO projects (name) VALUES (?1)").run("demo");
-
-    const legacyKey = await deriveLegacyMasterKey("legacy-passphrase");
-    const encrypted = await encryptSecret("secret-value", legacyKey);
     db.query("INSERT INTO secrets (project_id, name, encrypted_value, iv) VALUES (?1, ?2, ?3, ?4)")
-      .run(1, "TOKEN", encrypted.encrypted, encrypted.iv);
+      .run(1, "TOKEN", "ciphertext", "iv");
 
-    const migrated = await initializeOrUnlockVault(db as never, "legacy-passphrase");
-    expect(migrated.mode).toBe("migrated");
-
-    const metadata = db.query("SELECT salt FROM vault_meta WHERE id = 1").get() as
-      | { salt: string }
-      | null;
-    expect(metadata?.salt).toEqual(expect.any(String));
-
-    const row = db
-      .query("SELECT encrypted_value, iv FROM secrets WHERE id = ?1")
-      .get(1) as { encrypted_value: string; iv: string };
-    await expect(
-      decryptSecret(row.encrypted_value, row.iv, migrated.masterKey),
-    ).resolves.toBe("secret-value");
-  });
-
-  it("rejects migration when the legacy passphrase is wrong", async () => {
-    const db = new FakeDb();
-    db.query("INSERT INTO projects (name) VALUES (?1)").run("demo");
-
-    const legacyKey = await deriveLegacyMasterKey("legacy-passphrase");
-    const encrypted = await encryptSecret("secret-value", legacyKey);
-    db.query("INSERT INTO secrets (project_id, name, encrypted_value, iv) VALUES (?1, ?2, ?3, ?4)")
-      .run(1, "TOKEN", encrypted.encrypted, encrypted.iv);
-
-    await expect(initializeOrUnlockVault(db as never, "wrong-passphrase")).rejects.toThrow(
-      "Fatal: passphrase did not match this vault",
+    await expect(initializeOrUnlockVault(db as never, "any-passphrase")).rejects.toThrow(
+      "Fatal: vault metadata is missing while secrets exist. Legacy vault migration is no longer supported.",
     );
-
-    const metadata = db.query("SELECT salt FROM vault_meta WHERE id = 1").get();
-    expect(metadata).toBeNull();
   });
 });

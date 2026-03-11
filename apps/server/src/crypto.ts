@@ -1,5 +1,4 @@
 const PBKDF2_ITERATIONS = 600_000;
-const LEGACY_STATIC_SALT = new TextEncoder().encode("maxedvault-domain-separation-salt");
 
 function decodeSalt(salt: string): Uint8Array {
   return Buffer.from(salt, "base64");
@@ -30,10 +29,6 @@ export function generateSalt(): string {
 
 export async function deriveMasterKey(passphrase: string, salt: string): Promise<CryptoKey> {
   return deriveKey(passphrase, decodeSalt(salt));
-}
-
-export async function deriveLegacyMasterKey(passphrase: string): Promise<CryptoKey> {
-  return deriveKey(passphrase, LEGACY_STATIC_SALT);
 }
 
 export async function encryptSecret(

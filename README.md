@@ -2,11 +2,52 @@
 
 Bun-native monorepo for a local secrets vault system.
 
-This repository ships a single unified binary: `maxedvault`.
-That binary can run both roles:
+## Quick Overview
 
-- Server
-- Client CLI
+- One binary (`maxedvault`) runs both roles: server + client CLI.
+- Secrets are encrypted at rest in SQLite and decrypted only when returned by the server.
+- Works best locally or on a private network (for example via Tailscale).
+
+## Quick Setup (copy/paste)
+
+Terminal 1 (start server):
+
+```bash
+# from repo root
+bun install && bun run check
+
+# one-time passphrase file setup
+mkdir -p ~/.config/maxedvault
+printf '%s\n' 'REPLACE_WITH_A_STRONG_PASSPHRASE' > ~/.config/maxedvault/passphrase.txt
+chmod 600 ~/.config/maxedvault/passphrase.txt
+
+cd apps/app
+bun run src/index.ts server --host 127.0.0.1 --passphrase-file ~/.config/maxedvault/passphrase.txt
+```
+
+Terminal 2 (connect client + test):
+
+```bash
+cd /path/to/maxed-vault/apps/app
+bun run src/index.ts init --server http://127.0.0.1:8420
+bun run src/index.ts project create demo
+bun run src/index.ts project use demo
+echo "super-secret" | bun run src/index.ts secret set WEBHOOK_SECRET
+bun run src/index.ts secret get WEBHOOK_SECRET
+```
+
+More server start examples:
+
+```bash
+# default: all interfaces
+bun run src/index.ts server --passphrase-file /absolute/path/passphrase.txt
+
+# local-only
+bun run src/index.ts server --host 127.0.0.1 --passphrase-file /absolute/path/passphrase.txt
+
+# specific Tailscale IP
+bun run src/index.ts server --host 100.64.0.10 --passphrase-file /absolute/path/passphrase.txt
+```
 
 ## Workspace Layout
 
@@ -20,8 +61,6 @@ That binary can run both roles:
 2. Configure the client once with `maxedvault init`.
 3. Bind a workspace to a project with `maxedvault project use <slug>`.
 4. Use `secret`, `env`, and `run` commands without repeating the project each time.
-
-Secrets are encrypted at rest in SQLite and decrypted only when returned by the local server.
 
 ## Encryption Model
 
@@ -58,65 +97,12 @@ Workspace config:
 
 - `.maxedvault/project.json`
 - shape: `{ "project": "infographics" }`
-- legacy `.maxedvault/config.json` is still read for backward compatibility
 
 Project resolution order for scoped commands:
 
 1. `--project <slug>`
 2. `MAXEDVAULT_PROJECT`
 3. nearest `.maxedvault/project.json` found by walking upward from the current directory
-
-## Install & Verify
-
-```bash
-bun install
-bun run check
-```
-
-## Run From Source
-
-```bash
-cd apps/app
-```
-
-Start the server:
-
-```bash
-bun run src/index.ts server
-bun run src/index.ts server start
-bun run src/index.ts server run
-```
-
-Bind host examples:
-
-```bash
-# default: all interfaces
-bun run src/index.ts server --passphrase-file /absolute/path/passphrase.txt
-
-# local-only
-bun run src/index.ts server --host 127.0.0.1 --passphrase-file /absolute/path/passphrase.txt
-
-# specific Tailscale IP
-bun run src/index.ts server --host 100.64.0.10 --passphrase-file /absolute/path/passphrase.txt
-```
-
-Configure the client:
-
-```bash
-bun run src/index.ts init --server http://localhost:8420
-```
-
-Typical flow:
-
-```bash
-bun run src/index.ts project create infographics
-bun run src/index.ts project use infographics
-echo "super-secret" | bun run src/index.ts secret set WEBHOOK_SECRET
-bun run src/index.ts secret get WEBHOOK_SECRET
-bun run src/index.ts env
-bun run src/index.ts run -- node app.js
-bun run src/index.ts status
-```
 
 ## CLI Reference
 
@@ -135,7 +121,6 @@ Binary: `maxedvault`
 
 - `maxedvault server`
 - `maxedvault server start`
-- `maxedvault server run`
 
 Server flags:
 

@@ -52,27 +52,13 @@ describe("config", () => {
     });
   });
 
-  it("supports legacy workspace config files", () => {
-    const rootDir = createTempDir();
-    tempDirs.push(rootDir);
-    mkdirSync(join(rootDir, ".maxedvault"), { recursive: true });
-    writeFileSync(join(rootDir, ".maxedvault", "config.json"), JSON.stringify({ project: "alpha" }));
-    mkdirSync(join(rootDir, "src", "nested"), { recursive: true });
-
-    expect(findWorkspaceConfig(join(rootDir, "src", "nested"))).toMatchObject({
-      rootDir,
-      path: join(rootDir, ".maxedvault", "config.json"),
-      config: { project: "alpha" },
-    });
-  });
-
-  it("ignores global config while searching for workspace config", async () => {
+  it("does not treat global config as workspace config", async () => {
     const homeDir = createTempDir();
     tempDirs.push(homeDir);
 
     await saveGlobalConfig("http://vault.internal", homeDir);
 
-    expect(findWorkspaceConfig(homeDir, homeDir)).toBeNull();
+    expect(findWorkspaceConfig(homeDir)).toBeNull();
   });
 
   it("prefers nearest package root when choosing where to write workspace config", async () => {
