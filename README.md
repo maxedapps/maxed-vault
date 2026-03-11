@@ -177,6 +177,7 @@ Notes:
 
 - `maxedvault secret set <name> [--project <slug>]`
 - `maxedvault secret get <name> [--project <slug>]`
+- `maxedvault secret import --file <path> [--project <slug>]`
 - `maxedvault secret list [prefix] [--project <slug>]`
 - `maxedvault secret remove <name> [--project <slug>]`
 
@@ -199,6 +200,19 @@ Validation rules:
   - tries `https://<input>/health`
   - then tries `http://<input>/health`
   - stores the first reachable server
+
+### Import secrets from a `.env` file
+
+```bash
+maxedvault secret import --file .env --project infographics
+```
+
+Notes:
+
+- Supports `KEY=value` and `export KEY=value`
+- Supports single-quoted and double-quoted values
+- Lines starting with `#` are ignored
+- Duplicate keys are resolved with “last one wins” semantics
 
 ## Loading Secrets Into Processes
 

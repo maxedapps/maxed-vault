@@ -2,7 +2,7 @@ import { parseArgs } from "node:util";
 import { createDefaultRuntime, type CliRuntime } from "./runtime";
 import { saveGlobalConfig } from "./config";
 import { cmdProjectClear, cmdProjectCreate, cmdProjectCurrent, cmdProjectList, cmdProjectUse } from "./commands/project";
-import { cmdSecretGet, cmdSecretList, cmdSecretRemove, cmdSecretSet } from "./commands/secret";
+import { cmdSecretGet, cmdSecretImport, cmdSecretList, cmdSecretRemove, cmdSecretSet } from "./commands/secret";
 import { cmdEnv } from "./commands/env";
 import { cmdRun } from "./commands/run";
 import { cmdStatus } from "./commands/status";
@@ -18,6 +18,12 @@ type ProjectOptionParseResult = {
   positionals: string[];
 };
 
+type SecretOptionParseResult = {
+  project?: string;
+  file?: string;
+  positionals: string[];
+};
+
 export interface CliDeps extends CliRuntime {
   argv: string[];
   parseArgs: typeof parseArgs;
@@ -29,6 +35,7 @@ export interface CliDeps extends CliRuntime {
   cmdProjectClear: typeof cmdProjectClear;
   cmdSecretGet: typeof cmdSecretGet;
   cmdSecretSet: typeof cmdSecretSet;
+  cmdSecretImport: typeof cmdSecretImport;
   cmdSecretList: typeof cmdSecretList;
   cmdSecretRemove: typeof cmdSecretRemove;
   cmdEnv: typeof cmdEnv;
@@ -56,6 +63,7 @@ function buildCliDeps(overrides: Partial<CliDeps> = {}): CliDeps {
     cmdProjectClear,
     cmdSecretGet,
     cmdSecretSet,
+    cmdSecretImport,
     cmdSecretList,
     cmdSecretRemove,
     cmdEnv,
@@ -137,6 +145,23 @@ function parseProjectOptionArgs(args: string[], parseArgsImpl: typeof parseArgs 
 
   return {
     project: values.project,
+    positionals,
+  };
+}
+
+function parseSecretOptionArgs(args: string[], parseArgsImpl: typeof parseArgs = parseArgs): SecretOptionParseResult {
+  const { values, positionals } = parseArgsImpl({
+    args,
+    allowPositionals: true,
+    options: {
+      project: { type: "string" },
+      file: { type: "string" },
+    },
+  });
+
+  return {
+    project: values.project,
+    file: values.file,
     positionals,
   };
 }
@@ -263,7 +288,12 @@ async function runProjectCommand(args: string[], deps: CliDeps): Promise<void> {
 }
 
 async function runSecretCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseProjectOptionArgs(args, deps.parseArgs);
+  if (args.some((arg) => isHelpToken(arg))) {
+    printHelp("secret", deps);
+    return;
+  }
+
+  const parsed = parseSecretOptionArgs(args, deps.parseArgs);
   const [subcommand, ...rest] = parsed.positionals;
 
   if (!subcommand || isHelpToken(subcommand)) {
@@ -273,35 +303,42 @@ async function runSecretCommand(args: string[], deps: CliDeps): Promise<void> {
 
   switch (subcommand) {
     case "get": {
-      if (!rest[0] || rest.length !== 1) {
+      if (parsed.file !== undefined || !rest[0] || rest.length !== 1) {
         failUsage("Usage: maxedvault secret get <name> [--project <slug>]");
       }
       await deps.cmdSecretGet(deps, rest[0], parsed.project);
       return;
     }
     case "set": {
-      if (!rest[0] || rest.length !== 1) {
+      if (parsed.file !== undefined || !rest[0] || rest.length !== 1) {
         failUsage("Usage: maxedvault secret set <name> [--project <slug>]");
       }
       await deps.cmdSecretSet(deps, rest[0], parsed.project);
       return;
     }
+    case "import": {
+      if (rest.length > 0 || typeof parsed.file !== "string" || parsed.file.trim().length === 0) {
+        failUsage("Usage: maxedvault secret import --file <path> [--project <slug>]");
+      }
+      await deps.cmdSecretImport(deps, parsed.file, parsed.project);
+      return;
+    }
     case "list": {
-      if (rest.length > 1) {
+      if (parsed.file !== undefined || rest.length > 1) {
         failUsage("Usage: maxedvault secret list [prefix] [--project <slug>]");
       }
       await deps.cmdSecretList(deps, rest[0], parsed.project);
       return;
     }
     case "remove": {
-      if (!rest[0] || rest.length !== 1) {
+      if (parsed.file !== undefined || !rest[0] || rest.length !== 1) {
         failUsage("Usage: maxedvault secret remove <name> [--project <slug>]");
       }
       await deps.cmdSecretRemove(deps, rest[0], parsed.project);
       return;
     }
     default:
-      failUsage("Usage: maxedvault secret <get|set|list|remove>");
+      failUsage("Usage: maxedvault secret <get|set|import|list|remove>");
   }
 }
 

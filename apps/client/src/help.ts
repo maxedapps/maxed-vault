@@ -8,6 +8,7 @@ export const CLIENT_COMMAND_SUMMARY_LINES = [
   "  maxedvault project clear",
   "  maxedvault secret set <name> [--project <slug>]",
   "  maxedvault secret get <name> [--project <slug>]",
+  "  maxedvault secret import --file <path> [--project <slug>]",
   "  maxedvault secret list [prefix] [--project <slug>]",
   "  maxedvault secret remove <name> [--project <slug>]",
   "  maxedvault env [--project <slug>]",
@@ -27,6 +28,7 @@ const PROJECT_COMMAND_LINES = [
 const SECRET_COMMAND_LINES = [
   "  maxedvault secret set <name> [--project <slug>]",
   "  maxedvault secret get <name> [--project <slug>]",
+  "  maxedvault secret import --file <path> [--project <slug>]",
   "  maxedvault secret list [prefix] [--project <slug>]",
   "  maxedvault secret remove <name> [--project <slug>]",
 ];

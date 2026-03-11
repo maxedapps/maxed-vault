@@ -39,6 +39,7 @@ function createDeps(): Partial<CliDeps> & { exitMock: ReturnType<typeof vi.fn> }
     cmdProjectClear: vi.fn(),
     cmdSecretGet: vi.fn().mockResolvedValue(undefined),
     cmdSecretSet: vi.fn().mockResolvedValue(undefined),
+    cmdSecretImport: vi.fn().mockResolvedValue(undefined),
     cmdSecretList: vi.fn().mockResolvedValue(undefined),
     cmdSecretRemove: vi.fn().mockResolvedValue(undefined),
     cmdEnv: vi.fn().mockResolvedValue(undefined),
@@ -76,6 +77,14 @@ describe("runCli", () => {
     await runCli(["secret", "get", "TOKEN", "--project", "infographics"], deps);
 
     expect(deps.cmdSecretGet).toHaveBeenCalledWith(expect.any(Object), "TOKEN", "infographics");
+  });
+
+  it("dispatches secret import", async () => {
+    const deps = createDeps();
+
+    await runCli(["secret", "import", "--file", ".env", "--project", "infographics"], deps);
+
+    expect(deps.cmdSecretImport).toHaveBeenCalledWith(expect.any(Object), ".env", "infographics");
   });
 
   it("dispatches run with optional project", async () => {
